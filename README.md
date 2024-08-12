@@ -75,7 +75,7 @@ the Model 2450 allows you to test the Brightness and color of video displays on 
 
 **Link:** For more information, see the [product home page](https://store.mcci.com/products/model-2450-brightness-and-color-kit).
 
-![Model2450 Briteness& Color Kit](assets/Model2450.PNG)
+![Model2450BACK](assets/Model2450.PNG)
 
 ## Release History
 
