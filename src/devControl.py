@@ -32,7 +32,7 @@ from uiGlobal import *
 
 #     # print("Dev_list:", dev_list)
 
-def get_avail_ports():
+def get_avail_ports(top):
     """
     Get the list of avalible ports
 
