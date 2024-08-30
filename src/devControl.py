@@ -15,22 +15,25 @@
 #       Module created
 ##############################################################################
 
-from model2450lib import searchswitch
-# from model2450lib import switch2450
-
-# from model2450lib import searchswitch
-
+# from model2450lib import searchmodel
+from model2450lib import searchmodel
 from uiGlobal import *
 
-# from uiGlobals import *
+def firmware_version():
+    # dev_ver =
+    pass 
 
-
-
-# def search_device():
-#     dev_list = searchswitch.get_switches()
-#     return dev_list
-
-#     # print("Dev_list:", dev_list)
+def search_device():
+    """
+    searching the devices
+    Args:
+        top: top creates the object
+    Returns:
+        findict: network device list
+        dev_dict: devices in dictionary
+    """
+    dev_dict = searchmodel.get_models()
+    return dev_dict
 
 def get_avail_ports(top):
     """
@@ -42,22 +45,8 @@ def get_avail_ports(top):
     Returns:
         dev_list: return the comport
     """
-    dev_list = searchswitch.get_avail_ports()
+    dev_list = searchmodel.get_avail_ports()
     return dev_list
-
-def search_device():
-    """
-    searching the devices
-    Args:
-        top: top creates the object
-    Returns:
-        findict: network device list
-        dev_dict: devices in dictionary
-    """
-    dev_dict = searchswitch.get_switches()
-    return dev_dict
-
-
 
 def get_dev_baud(devname):
     devidx = None

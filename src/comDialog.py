@@ -17,11 +17,13 @@
 import wx
 from uiGlobal import *
 import devControl
-from model2450lib import searchswitch, switch2450
+# from model2450lib import searchmodel, model2450
+from model2450lib import searchmodel
+from model2450lib import model2450
 
 import logWindow
 
-class SearchSwitch(wx.PyEvent):
+class SearchModel(wx.PyEvent):
     """A class ServerEvent with init method"""
 
     def __init__(self, data):
@@ -89,10 +91,11 @@ class ComDialog(wx.Dialog):
         """
         Get the list of devices of model2450
         """
-        self.devlist = searchswitch.get_switches()
+        self.devlist = searchmodel.get_models()
+        print(self.devlist)
         if (wx.IsBusy()):
             wx.EndBusyCursor()
-        self.dev_list = self.devlist["switches"]
+        self.dev_list = self.devlist["models"]
         if (len(self.dev_list) == 0):
             self.com_combo.Clear()
         else:
@@ -119,6 +122,7 @@ class ComDialog(wx.Dialog):
         """
         when click on search button, its started the search the model 2450 devices.
         """
+        self.parent.log_message(f"Searching the COM...\n")
         self.get_device()
 
     def OnConnect(self, e):
@@ -132,13 +136,15 @@ class ComDialog(wx.Dialog):
         self.selected = self.com_combo.GetValue()
         if self.selected:
             self.port = self.selected.split('(')[1].strip(')')
-            print("Comport:", self.port)
-            if self.control_window.connect_to_switch(self.port):
-                self.firmware_window.connect_to_switch(self.port)  # Also connect to firmware window
-                self.firmware_window.set_switch(self.control_window.switch)  # Pass the switch instance to firmware window
-                self.parent.log_message(f"Successfully Connected to {self.port}")
+            if self.control_window.connect_to_model(self.port):
+                self.firmware_window.connect_to_model(self.port)  # Also connect to firmware window
+                self.firmware_window.set_model(self.control_window.model)  # Pass the model instance to firmware window
+                self.parent.log_message(f"Successfully Connected to {self.port}\n")
                 self.EndModal(wx.ID_OK)  # Close the dialog with success
             else:
                 self.parent.log_message(f"Failed to connect to {self.port}")
                 self.EndModal(wx.ID_CANCEL)  # Close the dialog with failure
+    
+    def get_selected_port(self):
+        return self.port  # Provide access to the selected COM port
     

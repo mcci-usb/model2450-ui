@@ -33,12 +33,14 @@ import logWindow
 # from login import LogIn
 from colorset import ColorSet
 
+from blankframes import BlinkFrames
 
 
-# from cricketlib import searchswitch
 
-# from model2450lib import switch2450
-# from model2450lib import searchswitch
+# from cricketlib import searchmodel
+
+# from model2450lib import model2450
+# from model2450lib import searchmodel
 
 class MultiStatus (wx.StatusBar):
     """
@@ -62,7 +64,7 @@ class MultiStatus (wx.StatusBar):
         # Sets the number of field count "5"
         self.SetFieldsCount(3)
         # Sets the widths of the fields in the status bar.
-        self.SetStatusWidths([-2, -2, -10])
+        self.SetStatusWidths([-6, -2, -4])
         
 
 # uiMainapp.py
@@ -85,11 +87,13 @@ class UiMainFrame(wx.Frame):
             None
         """
         wx.Frame.__init__(self, None, size=(540,650))
+        self.SetMinSize((540,650))
+        self.SetMaxSize((540,650))
         
-        self.switch = None
+        self.model = None
 
         self.SetBackgroundColour("White")
-        self.SetTitle('MCCI Model 2450 UI - Version 1.0.0')
+        self.SetTitle('MCCI Model2450 UI - Version 1.0.0')
         
         base = os.path.abspath(os.path.dirname(__file__))
         self.SetIcon(wx.Icon(base+"/icons/"+IMG_ICON))
@@ -124,16 +128,21 @@ class UiMainFrame(wx.Frame):
         self.menu_bar.Append(self.file_menu, "File")
 
         self.connect_menu = wx.Menu()
-        self.connect_menu.Append(wx.ID_ANY, "Connect")
-        self.connect_menu.Append(wx.ID_ANY, "Disconnect")
-        self.menu_bar.Append(self.connect_menu, "Select Switch")
+        self.connect_menu.Append(ID_CONNECT_MODEL, "Connect")
+        self.connect_menu.Append(ID_DISCONNECT_MODEL, "Disconnect")
+        self.menu_bar.Append(self.connect_menu, "Select Model")
 
-        configure_menu = wx.Menu()
-        configure_menu.Append(wx.ID_ANY, "Configure")
-        self.menu_bar.Append(configure_menu, "Configure")
+        # self.configure_menu = wx.Menu()
+        # self.configure_menu.Append(ID_CALIBRATION, "Configure")
+        # self.menu_bar.Append(self.configure_menu, "Configure")
+
+        self.configure_menu = wx.Menu()
+        self.configure_menu.Append(ID_CALIBRATION, "Calibration")
+        self.configure_menu.Append(ID_BLOCKFRAMES, "Blockframescan")
+        self.menu_bar.Append(self.configure_menu, "Configure")
 
         self.helpMenu = wx.Menu()
-        self.helpMenu.Append(wx.ID_ABOUT, "About...")
+        self.helpMenu.Append(wx.ID_ABOUT, "About")
         self.menu_bar.Append(self.helpMenu, "Help")
 
         self.SetMenuBar(self.menu_bar)
@@ -146,7 +155,10 @@ class UiMainFrame(wx.Frame):
         self.Bind(wx.EVT_MENU, self.OnAboutWindow, id=wx.ID_ABOUT)
         self.Bind(wx.EVT_MENU, self.OnConnect, id=self.connect_menu.FindItem("Connect"))
         self.Bind(wx.EVT_MENU, self.OnDisconnect, id=self.connect_menu.FindItem("Disconnect"))
-        self.Bind(wx.EVT_MENU, self.OnsetColor, id=configure_menu.FindItem("Configure"))
+        # self.Bind(wx.EVT_MENU, self.OnsetColor, id=self.configure_menu.FindItem("Configure"))
+        # Bind the Calibration menu item to an event handler
+        self.Bind(wx.EVT_MENU, self.OnsetColor, id=self.configure_menu.FindItem("Calibration"))
+        self.Bind(wx.EVT_MENU, self.Onblockframes, id=self.configure_menu.FindItem("Blockframescan"))
 
 
     def build_help_menu(self):
@@ -154,24 +166,24 @@ class UiMainFrame(wx.Frame):
         Build the help menu.
 
         Description:
-            - Appends menu items to visit different MCCI USB Switch models.
+            - Appends menu items to visit different MCCI USB model models.
         """
         # Creating the help menu
         self.abc = self.helpMenu.Append(ID_MENU_HELP_2450, "Visit MCCI Model 2450 BACK")
-        self.helpMenu.Append(ID_MENU_HELP_3141, "Visit MCCI USB Switch 3141")
-        self.helpMenu.Append(ID_MENU_HELP_3201, "Visit MCCI USB Switch 3201")
-        self.helpMenu.Append(ID_MENU_HELP_2101, "Visit MCCI USB Switch 2101")
-        self.helpMenu.Append(ID_MENU_HELP_2301, "Visit MCCI USB Switch 2301")
+        self.helpMenu.Append(ID_MENU_HELP_MODEL2450LIB, "Visit Model2450lib")
+        # self.helpMenu.Append(ID_MENU_HELP_3201, "Visit MCCI USB model 3201")
+        # self.helpMenu.Append(ID_MENU_HELP_2101, "Visit MCCI USB model 2101")
+        # self.helpMenu.Append(ID_MENU_HELP_2301, "Visit MCCI USB model 2301")
         self.helpMenu.AppendSeparator()
         self.helpMenu.Append(ID_MENU_HELP_WEB, "MCCI Website")
         self.helpMenu.Append(ID_MENU_HELP_PORT, "MCCI Support Portal")
         self.helpMenu.AppendSeparator()
         
         self.Bind(wx.EVT_MENU, self.OnClickHelp, id=ID_MENU_HELP_2450)
-        self.Bind(wx.EVT_MENU, self.OnClickHelp, id=ID_MENU_HELP_3141)
-        self.Bind(wx.EVT_MENU, self.OnClickHelp, id=ID_MENU_HELP_3201)
-        self.Bind(wx.EVT_MENU, self.OnClickHelp, id=ID_MENU_HELP_2101)
-        self.Bind(wx.EVT_MENU, self.OnClickHelp, id=ID_MENU_HELP_2301)
+        self.Bind(wx.EVT_MENU, self.OnClickHelp, id=ID_MENU_HELP_MODEL2450LIB)
+        # self.Bind(wx.EVT_MENU, self.OnClickHelp, id=ID_MENU_HELP_3201)
+        # self.Bind(wx.EVT_MENU, self.OnClickHelp, id=ID_MENU_HELP_2101)
+        # self.Bind(wx.EVT_MENU, self.OnClickHelp, id=ID_MENU_HELP_2301)
         self.Bind(wx.EVT_MENU, self.OnClickHelp, id=ID_MENU_HELP_WEB)
         self.Bind(wx.EVT_MENU, self.OnClickHelp, id=ID_MENU_HELP_PORT)
     
@@ -186,7 +198,11 @@ class UiMainFrame(wx.Frame):
          # Create the statusbar
         self.statusbar = MultiStatus(self)
         self.SetStatusBar(self.statusbar)
-        self.UpdateAll(["COM", "", ""])
+        # Retrieve the current COM port number
+        
+        # self.com_port = self.get_com_port()  # Method to get the COM port number
+        # print("com-->:", self.com_port)
+        self.UpdateAll(["No Device Connected", "", ""])
         
     
     def UpdateAll (self, textList):
@@ -265,20 +281,9 @@ class UiMainFrame(wx.Frame):
         if (id == ID_MENU_HELP_2450):
             webbrowser.open("https://store.mcci.com/products/model-2450-brightness-and-color-kit",
                             new=0, autoraise=True)
-        elif(id == ID_MENU_HELP_3141):
-            webbrowser.open("https://mcci.com/usb/dev-tools/model-3141/",
+        elif(id == ID_MENU_HELP_MODEL2450LIB):
+            webbrowser.open("https://github.com/mcci-usb/model2450lib",
                             new=0, autoraise=True)
-        elif(id == ID_MENU_HELP_3201):
-            webbrowser.open("https://mcci.com/usb/dev-tools/3201-enhanced"
-                            "-type-c-connection-exerciser/",
-                            new=0, autoraise=True)
-        elif(id == ID_MENU_HELP_2101):
-            webbrowser.open(
-            "https://mcci.com/usb/dev-tools/2101-usb-connection-exerciser/",
-                            new=0, autoraise=True)
-        elif(id == ID_MENU_HELP_2301):
-            webbrowser.open("https://mcci.com/usb/dev-tools/model-2301/",
-                            new=0, autoraise=True)       
         elif(id == ID_MENU_HELP_WEB):
             webbrowser.open("https://mcci.com/", new=0, autoraise=True)
         elif(id == ID_MENU_HELP_PORT):
@@ -300,19 +305,34 @@ class UiMainFrame(wx.Frame):
             None
         """
         dialog = ComDialog(self, title="Select COM Port", control_window=self.controlPan, firmware_window=self.firmwarePan)
-        dialog.ShowModal()
+        
+        # dialog.ShowModal()
+        if dialog.ShowModal() == wx.ID_OK:
+            # self.UpdateAll([dialog.get_selected_port(), "", ""])
+            self.UpdateAll([dialog.get_selected_port() + " "+ "Connected", "", ""])
 
         dialog.Destroy()
     
     def OnsetColor(self, e):
-        if not self.controlPan.switch:
-            wx.MessageBox("No switch connected.", "Error", wx.OK | wx.ICON_ERROR)
-            return
+        # if not self.controlPan.model:
+        #     wx.MessageBox("No model connected.", "Error", wx.OK | wx.ICON_ERROR)
+        #     return
 
-        dialog = ColorSet(self, "Color Normalization", self.log_message)  # Pass log_message instead of self
-        dialog.set_switch(self.controlPan.switch)  # Pass the switch to ColorSet
+        dialog = ColorSet(self, "Color Calibration", self.log_message)  # Pass log_message instead of self
+        dialog.set_model(self.controlPan.model)  # Pass the model to ColorSet
         dialog.Show()
     
+    def Onblockframes(self, e):
+        """
+        start the handler.
+
+        Args:
+            e: event handler of Run
+        """
+        dialog = BlinkFrames(self, "Blank Frames", self.log_message)  # Pass log_message instead of self
+        dialog.set_model(self.controlPan.model)  # Pass the model to ColorSet
+        dialog.Show()
+
     def OnCloseWindow(self, event):
         """
         Virtual event handlers, overide them in your derived class
@@ -345,10 +365,12 @@ class UiMainFrame(wx.Frame):
          Returns:
              None
          """
-        if self.controlPan.switch:
-            self.controlPan.switch.disconnect()  # Assuming the switch object has a disconnect method
-            self.statusbar.SetStatusText('Disconnected from the COM port')
-            self.log_message("\nSuccessfully Disconnected COM Port...")
+        
+        if self.controlPan.model:
+            self.controlPan.model.disconnect()  # Assuming the model object has a disconnect method
+            self.statusbar.SetStatusText("COM Disconnected...")
+            
+            self.log_message("\nSuccessfully Disconnected COM Port...\n")
             # print("COM port disconnected.")
         else:
             wx.MessageBox("\nNo COM port is currently connected.", "Disconnect", wx.OK | wx.ICON_INFORMATION)

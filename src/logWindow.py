@@ -51,13 +51,15 @@ class LogWindow(wx.Window):
         self.vbox = wx.StaticBoxSizer(sb, wx.VERTICAL)
 
         
-        
+        self.cb_timestamp = wx.CheckBox(self, -1, "Timestamp")
+        self.cb_timestamp.SetToolTip(wx.ToolTip("Include timestamp in log messages"))
+
         self.btn_save = wx.Button(self, ID_BTN_AUTO, "Save",
                                         size=(60, -1))  
         self.btn_clear = wx.Button(self, ID_BTN_CLEAR, "Clear",
                                          size=(60, 25))
         
-        # set tooltip for switching interval and auto buttons.
+        # set tooltip for modeling interval and auto buttons.
         self.btn_save.SetToolTip(wx.
                       ToolTip("Save Log content into a text file"))
         
@@ -70,9 +72,9 @@ class LogWindow(wx.Window):
         self.scb.SetBackgroundColour((255,255,255))
         
         self.hbox = wx.BoxSizer(wx.HORIZONTAL)
-        
+
+        self.hbox.Add(self.cb_timestamp, 0, flag=wx.RIGHT, border=30)  # Add the checkbox to the layout
         self.hbox.Add(self.btn_clear, 0, flag=wx.RIGHT ,border = 30)
- 
         self.hbox.Add(self.btn_save,1 , flag=wx.RIGHT , border = 180)
         
         # Bind the button event to handler
@@ -98,20 +100,22 @@ class LogWindow(wx.Window):
         self.SetSizer(self.vbox)
         self.vbox.Fit(self)
         self.Layout()
-        
+    
     def log_message(self, message):
         """
-        print the data in Logwindow
-        Args:
-            self: The self parameter is a reference to the current 
-            instance of the class,and is used to access variables
-            that belongs to the class.
-            strin: USB device list in String format.
-        Returns:
-            None
+        Print the data in the LogWindow, with optional timestamp.
         """
+        if self.cb_timestamp.IsChecked():
+            # Add timestamp if checkbox is checked
+            ct = datetime.now()
+            timestamp = ct.strftime("%Y-%m-%d  %H:%M:%S.%f")
+            cstr = "[" + timestamp[:-3] + "]  "
+            message = f"{cstr}   {message}"  # Add spaces between timestamp and message
+        else:
+            message = f"{message}"
+        
         self.scb.AppendText(message)
-    
+  
     def ClearLogWindow(self, e):
         """
         Event handler for Clear button
