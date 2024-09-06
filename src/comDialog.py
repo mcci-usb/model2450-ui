@@ -122,16 +122,15 @@ class ComDialog(wx.Dialog):
         """
         when click on search button, its started the search the model 2450 devices.
         """
-        self.parent.log_message(f"Searching the COM...\n")
+        self.parent.log_message(f"\nSearching the COM...")
         self.get_device()
 
     def OnConnect(self, e):
         """
-        connect or Open the comport for model 2450 device.
-
+        Connect or Open the COM port for the Model 2450 device and fetch the serial number.
+        
         Args:
-            self: object created
-            event:event occuored for the particular button.
+            e: Event triggered when the Connect button is clicked.
         """
         self.selected = self.com_combo.GetValue()
         if self.selected:
@@ -139,12 +138,21 @@ class ComDialog(wx.Dialog):
             if self.control_window.connect_to_model(self.port):
                 self.firmware_window.connect_to_model(self.port)  # Also connect to firmware window
                 self.firmware_window.set_model(self.control_window.model)  # Pass the model instance to firmware window
-                self.parent.log_message(f"Successfully Connected to {self.port}\n")
+                
+                # Fetch the serial number
+                serial_number = self.control_window.model.read_sn().strip()
+                print("serial_number:", serial_number)
+                # self.UpdateAll([dialog.get_selected_port() + " "+ "Connected", "", ""])
+                self.parent.UpdateAll([f"{self.port} Connected", f"{serial_number}", ""])
+                             
+                self.parent.log_message(f"\nSuccessfully Connected to {self.port}\n")
                 self.EndModal(wx.ID_OK)  # Close the dialog with success
             else:
-                self.parent.log_message(f"Failed to connect to {self.port}")
+                self.parent.log_message(f"\nFailed to connect to {self.port}")
                 self.EndModal(wx.ID_CANCEL)  # Close the dialog with failure
     
     def get_selected_port(self):
         return self.port  # Provide access to the selected COM port
+    
+   
     

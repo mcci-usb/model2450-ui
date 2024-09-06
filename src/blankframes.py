@@ -1,130 +1,171 @@
-##############################################################################
-# 
-# Module: blankframes.py
-#
-# Description:
-#     Count the number of blinking counts.
-#
-# Author:
-#     Vinay N, MCCI Corporation Aug 2024
-#
-# Revision history:
-#     V1.0.0 Mon Aug 12 2024 01:00:00   Vinay N 
-#       Module created
-##############################################################################
-# import wx
 import wx
 from model2450lib import model2450
+import os
+from uiGlobal import *
+import json
+import time
 
-from uiGlobal import * 
-from pathlib import Path
-import logWindow
+CONFIG_FILE = "config.json"  # Configuration file to store the light threshold value
 
 class BlinkFrames(wx.Frame):
     def __init__(self, parent, title, log_window):
         super(BlinkFrames, self).__init__(parent, title=title, size=wx.Size(380, 180))
+       
+        self.start_time = None
+        self.running = False
 
         self.log_window = log_window
+        self.model = None  # To store the model connection object
+        self.config_path = os.path.join(os.path.abspath(os.path.dirname(__file__)), CONFIG_FILE)
+        self.config = self.load_config()  # Load the configuration
+        self.setup_ui()
+        
+    def setup_ui(self):
+        """Set up the user interface."""
         # Set the frame properties
-        self.SetTitle("Blink Frames")
-
-        base = os.path.abspath(os.path.dirname(__file__))
-        self.SetIcon(wx.Icon(base+"/icons/"+IMG_ICON))
-        # self.Show()
+        self.SetTitle("Blackframe Scan")
+        self.SetIcon(wx.Icon(os.path.join(os.path.abspath(os.path.dirname(__file__)), "icons", IMG_ICON)))
         self.SetBackgroundColour("white")
         self.SetSize((380, 180))
+
         # Create a panel inside the frame
         self.panel = wx.Panel(self)
         self.top_vbox = wx.BoxSizer(wx.VERTICAL)
+
         # Horizontal box for blink frames controls
         self.hbox_blink_frames = wx.BoxSizer(wx.HORIZONTAL)
-        self.st_blink = wx.StaticText(self.panel, label="Blink Frames", size=(-1, -1))
-        self.tc_blink = wx.TextCtrl(self.panel, value=" ", size=(-1, -1))
-        self.st_sec = wx.StaticText(self.panel, label="ms", size=(-1, -1))
-        self.btn_start = wx.Button(self.panel, label="Run", size=(-1, -1))
+        self.hbox_run = wx.BoxSizer(wx.HORIZONTAL)
         
-        self.hbox_blink_frames.Add(self.st_blink, 1, wx.ALL, 10)
-        self.hbox_blink_frames.Add(self.tc_blink, 1, wx.ALL, 10)
-        self.hbox_blink_frames.Add(self.st_sec, 1, wx.ALL, 10)
-        self.hbox_blink_frames.Add(self.btn_start, 1, wx.ALL, 10)
+        # Add "Connect" button
+        self.st_lth = wx.StaticText(self.panel, label="Light Value Threshold", size=(-1, -1))
+        self.tc_lth = wx.TextCtrl(self.panel, value="", size=(-1, -1), style=wx.TE_CENTRE |
+                                     wx.TE_PROCESS_ENTER)  # Default value for testing
+        self.btn_lth = wx.Button(self.panel, label="Update", size=(-1, -1))
+
+        self.btn_run = wx.Button(self.panel, label="Run", size=(-1, -1))
+        self.btn_stop = wx.Button(self.panel, label="Stop", size=(-1, -1))
+        self.tc_time = wx.TextCtrl(self.panel, value="%H:%M:%S", size=(-1, -1), style=wx.TE_CENTRE |
+                                     wx.TE_PROCESS_ENTER)
+
+        # Add controls to the layout
+        self.hbox_blink_frames.Add(self.st_lth, 1, wx.ALL, 10)
+        self.hbox_blink_frames.Add(self.tc_lth, 1, wx.ALL, 10)
+        self.hbox_blink_frames.Add(self.btn_lth, 1, wx.ALL, 10)
+
+        self.hbox_run.Add(self.btn_run, 1, wx.ALL, 10)
+        self.hbox_run.Add(self.btn_stop, 1, wx.ALL, 10)
+        self.hbox_run.Add(self.tc_time, 1, wx.ALL, 10)
+
         self.top_vbox.Add(self.hbox_blink_frames, 1, wx.ALIGN_CENTER | wx.ALL, 5)
+        self.top_vbox.Add(self.hbox_run, 1, wx.ALIGN_CENTER | wx.ALL, 5)
 
         self.panel.SetSizer(self.top_vbox)
         self.Centre()
         self.Show()
 
-        # Adding tooltips
-        self.tc_blink.SetToolTip(wx.ToolTip("1 second is 1000 milliseconds"))
-        # self.btn_start.Bind(wx.EVT_BUTTON, self.startBlink)
-        self.btn_start.Bind(wx.EVT_BUTTON, self.start_stop_blink)
-        # Timer setup
+        # Bind button events
+        self.btn_lth.Bind(wx.EVT_BUTTON, self.on_update)
+        self.btn_run.Bind(wx.EVT_BUTTON, self.on_start)
+        self.btn_stop.Bind(wx.EVT_BUTTON, self.on_stop)
         self.timer = wx.Timer(self)
-        self.Bind(wx.EVT_TIMER, self.on_timer)
-        # Track the button state
-        self.is_blinking = False
+        self.Bind(wx.EVT_TIMER, self.update_time, self.timer)
 
-    def start_stop_blink(self, event):
-        if not self.is_blinking:
-            # Start blinking
-            self.startBlink()
-            self.btn_start.SetLabel("Stop")
-        else:
-            # Stop blinking
-            self.stopBlink()
-            self.btn_start.SetLabel("Run")
-
-        # Toggle the state
-        self.is_blinking = not self.is_blinking
+        # Load the light threshold value from config
+        self.load_light_threshold()
     
-    def startBlink(self):
-        try:
-            interval = int(self.tc_blink.GetValue())
-            if interval <= 0:
-                raise ValueError("Interval must be positive.")
-            
-            self.timer.Start(interval)
-            print(f"Timer started with interval: {interval} ms")
-            self.log_window(f"\nBlinking started with {interval} ms interval.\n")
+    def load_config(self):
+        """Load the config.json file."""
+        if os.path.exists(self.config_path):
+            with open(self.config_path, 'r') as file:
+                try:
+                    return json.load(file)
+                except json.JSONDecodeError:
+                    wx.MessageBox("Error reading config file.", "Error", wx.OK | wx.ICON_ERROR)
+                    return {}
+        else:
+            return {}
+    
+    def load_light_threshold(self):
+        """Load the light_threshold value into the TextCtrl."""
+        light_threshold = self.config.get("light_threshold", "")
+        self.tc_lth.SetValue(str(light_threshold))
+    
+    def save_config(self):
+        """Saves the current configuration to a JSON file."""
+        with open(self.config_path, 'w') as f:
+            json.dump(self.config, f, indent=4)
 
-            if self.model is None:
-                self.log_window("Please Connect Model2450:\n")
-                return
-            # Here you would typically call the device-specific start method
-            cr = self.model.set_run()
-            # self.log_window("Run Blink Frame:\n")
-            self.log_window(cr)
-
-        except ValueError as ex:
-            wx.MessageBox(f"Invalid time interval: {ex}", "Error", wx.OK | wx.ICON_ERROR)
-  
-    def stopBlink(self):
-        self.timer.Stop()
-        # print("Timer stopped.")
-        # self.log_window("Blinking stopped.\n")
-
+    def on_update(self, event):
+        """Handles the 'Update' button click event."""
         if self.model is None:
-            wx.MessageBox("Please connect to a Model2450 first", "Error", wx.OK | wx.ICON_ERROR)
+            wx.MessageBox("Please connect to a model first", "Error", wx.OK | wx.ICON_ERROR)
             return
-
+        try:
+            # Get the value entered in the TextCtrl (light threshold)
+            self.level_value = int(self.tc_lth.GetValue())
+            # Call the model's set_level method with the entered value
+            self.cr = self.model.set_level(self.level_value)
+            # Log the response
+            self.log_window(f"Level set to {self.level_value}\n")
+            # Save value to config
+            self.config['light_threshold'] = self.level_value
+            self.save_config()
+        except ValueError:
+            wx.MessageBox("Please enter a valid integer for the level.", "Error", wx.OK | wx.ICON_ERROR)
+        except Exception as ex:
+            wx.MessageBox(f"Error setting level: {ex}", "Error", wx.OK | wx.ICON_ERROR)
+            
+    def on_start(self, e):
+        if self.model is None:
+            self.log_window("Please Connect Model2450:\n")
+            return
+        try:
+            cr = self.model.set_run()
+            self.log_window(f"\nBlinking started.\n")
+            self.log_window(cr)
+            self.start_timer()
+        except Exception as ex:
+            wx.MessageBox(f"Error starting blink: {ex}", "Error", wx.OK | wx.ICON_ERROR)
+    
+    def on_stop(self, e):
+        if self.model is None:
+            self.log_window("Please Connect Model2450:\n")
+            return
         try:
             cr = self.model.set_stop()
-            # self.log_window("Stop Blink Frame:\n")
             self.log_window(cr)
-            self.log_window(f"\nBlinking stopped")
+            self.log_window(f"\nBlinking stopped.\n")
+            self.stop_timer()
         except Exception as ex:
-            wx.MessageBox(f"Error setting stop: {ex}", "Error", wx.OK | wx.ICON_ERROR)
-    
-    def on_timer(self, event):
-        print("Timer event triggered, flipping the state.")
-        self.start_stop_blink(None)  # Flip the state after the timer completes
-
+            wx.MessageBox(f"Error stopping blink: {ex}", "Error", wx.OK | wx.ICON_ERROR)
+        
     def connect_to_model(self, port):
         self.model = model2450.Model2450(port)
-        if self.model.connect():
-            return True
-        else:
-            return False
-
+        return self.model.connect()
+    
     def set_model(self, model):
         self.model = model
-        # print("Mod set in BlinkFrames:", self.model)
+    
+    def start_timer(self):
+        """Start the timer and update the button label."""
+        self.start_time = time.time()
+        self.timer.Start(1000)  # Update every second
+        self.btn_run.Disable()
+        self.btn_stop.Enable()
+
+    def stop_timer(self):
+        """Stop the timer and update the button label."""
+        self.timer.Stop()
+        self.btn_run.Enable()
+        self.btn_stop.Disable()
+        # Display start and stop times
+        stop_time = time.strftime('%H:%M:%S', time.localtime(time.time()))
+        start_time = time.strftime('%H:%M:%S', time.localtime(self.start_time))
+        self.log_window(f"\nStart Time: {start_time} and Stop Time: {stop_time}\n")
+        
+
+    def update_time(self, event):
+        """Update the time display every second."""
+        if self.start_time:
+            current_time = time.strftime('%H:%M:%S', time.localtime())
+            self.tc_time.SetValue(f"{current_time}")

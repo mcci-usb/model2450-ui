@@ -149,9 +149,9 @@ class FirmwareWindow(wx.Panel):
         wx.BoxSizer(wx.HORIZONTAL)
         
         self.szr_version.AddMany([
-            (10,10,0),
+            (10,50,0),
             (self.light_label, 0, wx.ALIGN_LEFT | wx.ALIGN_CENTER_VERTICAL),
-            (60,10,0),
+            (27,10,0),
             (self.light_text, 0, wx.ALIGN_LEFT | wx.ALIGN_CENTER_VERTICAL),
             (10,10,0),
             (self.light_btn, 0, wx.ALIGN_LEFT | wx.ALIGN_CENTER_VERTICAL),
@@ -256,7 +256,7 @@ class FirmwareWindow(wx.Panel):
         # Call get_version and handle the retrieved version string
         version_string = self.get_check_version()
         if version_string:
-            self.log_window.log_message(f"\nFirmware Version(F:H)  {version_string}")
+            self.log_window.log_message(f"Firmware and Hardware Version(F:H)  {version_string}\n")
             self.light_text.SetValue(version_string)
 
 
@@ -736,7 +736,6 @@ class FirmwareWindow(wx.Panel):
             self.log_window.log_message("\nSearching Devices ...")
             # print("Searching Devices ...\n")
             # self.top.print_on_log("Searching Devices ...\n")
-    
     def get_devices(self):    
         devlist = devControl.search_device()
         print(devlist)

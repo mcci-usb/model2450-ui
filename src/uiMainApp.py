@@ -35,8 +35,6 @@ from colorset import ColorSet
 
 from blankframes import BlinkFrames
 
-
-
 # from cricketlib import searchmodel
 
 # from model2450lib import model2450
@@ -64,11 +62,9 @@ class MultiStatus (wx.StatusBar):
         # Sets the number of field count "5"
         self.SetFieldsCount(3)
         # Sets the widths of the fields in the status bar.
-        self.SetStatusWidths([-6, -2, -4])
+        self.SetStatusWidths([-6, -5, -4])
         
-
 # uiMainapp.py
-
 class UiMainFrame(wx.Frame):
     """
     A UiMainFrame is a window of size and position usually changed by user
@@ -120,6 +116,7 @@ class UiMainFrame(wx.Frame):
 
         self.CreateStatusBar()
         self.init_statusBar()
+        # self.init_statusBar_sn()
 
         self.menu_bar = wx.MenuBar()
 
@@ -138,7 +135,7 @@ class UiMainFrame(wx.Frame):
 
         self.configure_menu = wx.Menu()
         self.configure_menu.Append(ID_CALIBRATION, "Calibration")
-        self.configure_menu.Append(ID_BLOCKFRAMES, "Blockframescan")
+        self.configure_menu.Append(ID_BLOCKFRAMES, "Blackframe scan")
         self.menu_bar.Append(self.configure_menu, "Configure")
 
         self.helpMenu = wx.Menu()
@@ -158,7 +155,7 @@ class UiMainFrame(wx.Frame):
         # self.Bind(wx.EVT_MENU, self.OnsetColor, id=self.configure_menu.FindItem("Configure"))
         # Bind the Calibration menu item to an event handler
         self.Bind(wx.EVT_MENU, self.OnsetColor, id=self.configure_menu.FindItem("Calibration"))
-        self.Bind(wx.EVT_MENU, self.Onblockframes, id=self.configure_menu.FindItem("Blockframescan"))
+        self.Bind(wx.EVT_MENU, self.Onblockframes, id=self.configure_menu.FindItem("Blackframe scan"))
 
 
     def build_help_menu(self):
@@ -202,9 +199,9 @@ class UiMainFrame(wx.Frame):
         
         # self.com_port = self.get_com_port()  # Method to get the COM port number
         # print("com-->:", self.com_port)
-        self.UpdateAll(["No Device Connected", "", ""])
-        
+        self.UpdateAll(["No Device Connected", "Serial Number: N/A", ""])
     
+  
     def UpdateAll (self, textList):
         """
         Status bar update - All fields
@@ -308,10 +305,8 @@ class UiMainFrame(wx.Frame):
         
         # dialog.ShowModal()
         if dialog.ShowModal() == wx.ID_OK:
-            # self.UpdateAll([dialog.get_selected_port(), "", ""])
-            self.UpdateAll([dialog.get_selected_port() + " "+ "Connected", "", ""])
-
-        dialog.Destroy()
+    
+           dialog.Destroy()
     
     def OnsetColor(self, e):
         # if not self.controlPan.model:
@@ -368,8 +363,8 @@ class UiMainFrame(wx.Frame):
         
         if self.controlPan.model:
             self.controlPan.model.disconnect()  # Assuming the model object has a disconnect method
-            self.statusbar.SetStatusText("COM Disconnected...")
-            
+            self.statusbar.SetStatusText("COM Disconnected...", 0)  # Update first field to show disconnected
+            self.statusbar.SetStatusText("Serial Number: N/A", 1)   # Update second field to show N/A for Serial Number
             self.log_message("\nSuccessfully Disconnected COM Port...\n")
             # print("COM port disconnected.")
         else:

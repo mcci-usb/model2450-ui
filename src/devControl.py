@@ -65,6 +65,3 @@ def connect_device(swdict):
 
 def disconnect_device(self):
     pass
-    
-
-
