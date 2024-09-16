@@ -224,11 +224,14 @@ class ControlWindow(wx.Panel):
         self.st_light = wx.StaticText(self, label="Light")
         self.tc_light = wx.TextCtrl(self, ID_TC_SET_READ, "00000", size=(85, 25), style=wx.TE_CENTRE |
                                      wx.TE_PROCESS_ENTER)
+        self.st_msr = wx.StaticText(self, label="lux")
         self.btn_light = wx.Button(self, ID_BTN_READ_READ, "Read Light")
 
+        # Adding the widgets with adjustments to spacing and alignment
         self.light.Add(self.st_light, flag=wx.ALL, border=10)
-        self.light.Add((40, 0))  # Add a spacer of 40 pixels width
-        self.light.Add(self.tc_light, flag=wx.ALL, border=10)
+        self.light.Add((60, 0))  # Reduced spacer to 10 pixels width
+        self.light.Add(self.tc_light, flag=wx.ALIGN_CENTER_VERTICAL | wx.ALL, border=5)  # Added vertical alignment and reduced border
+        self.light.Add(self.st_msr, flag=wx.ALIGN_CENTER_VERTICAL | wx.ALL, border=2)  # Added vertical alignment and reduced border
         self.light.Add(self.btn_light, flag=wx.ALL, border=10)
 
         self.main_sizer.Add(self.light, flag=wx.EXPAND)
@@ -241,8 +244,9 @@ class ControlWindow(wx.Panel):
         self.btn_color = wx.Button(self, ID_BTN_READ_LEVEL, "Read Color")
 
         self.color.Add(self.st_color, flag=wx.ALL, border=10)
-        self.color.Add((1, 0))  # Add a spacer of 40 pixels width
+        self.color.Add((12, 0))  # Add a spacer of 40 pixels width
         self.color.Add(self.tc_color, flag=wx.ALL, border=10)
+        self.color.Add((14, 0)) 
         self.color.Add(self.btn_color, flag=wx.ALL, border=10)
 
         self.main_sizer.Add(self.color, flag=wx.EXPAND)
@@ -253,12 +257,13 @@ class ControlWindow(wx.Panel):
         self.tc_setint = wx.TextCtrl(self, ID_TC_SET_LEVEL, "2000", size=(85, 25), style=wx.TE_CENTRE |
                                      wx.TE_PROCESS_ENTER)
         self.st_ms = wx.StaticText(self, label="ms")
+        
         self.settime.Add(self.st_setint, flag=wx.ALL, border=10)
-        self.settime.Add((30, 0))  # Add a spacer of 40 pixels width
-        self.settime.Add(self.tc_setint, flag=wx.ALL, border=10)
-        self.settime.Add((0, 0))  # Add a spacer of 40 pixels width
-        self.settime.Add(self.st_ms, flag=wx.ALL, border=13)
-
+        self.settime.Add((44, 0))  # Add a spacer of 40 pixels width
+        
+        self.settime.Add(self.tc_setint, flag=wx.ALIGN_CENTER_VERTICAL | wx.ALL, border=5)  # Added vertical alignment and reduced border
+        self.settime.Add(self.st_ms, flag=wx.ALIGN_CENTER_VERTICAL | wx.ALL, border=2)  # Added vertical alignment and reduced border
+        
         self.main_sizer.Add(self.settime, flag=wx.EXPAND)
 
         # Start, Plot, Stop buttons

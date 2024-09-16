@@ -141,7 +141,6 @@ class ComDialog(wx.Dialog):
                 
                 # Fetch the serial number
                 serial_number = self.control_window.model.read_sn().strip()
-                print("serial_number:", serial_number)
                 # self.UpdateAll([dialog.get_selected_port() + " "+ "Connected", "", ""])
                 self.parent.UpdateAll([f"{self.port} Connected", f"{serial_number}", ""])
                              
