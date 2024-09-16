@@ -17,12 +17,15 @@
 import wx
 from uiGlobal import *
 import devControl
-from model2450lib import searchswitch
-from model2450lib import switch2450
+# from model2450lib import searchmodel
+# from model2450lib import model2450
+from model2450lib import searchmodel
+from model2450lib import model2450
 import serial.tools.list_ports
 
 import os
 import sys
+
 
 
 ID_TC_GET_VERSION = 1000
@@ -104,8 +107,8 @@ class FirmwareWindow(wx.Panel):
 
         self.dlist = []
         self.clist = []
-        self.switchlist = []
-        self.addswitchlist = []
+        self.modellist = []
+        self.addmodellist = []
         
         self.dlist = "COM3"
 
@@ -114,13 +117,13 @@ class FirmwareWindow(wx.Panel):
         ##################################################################
         # Light control
         # self.light_sizer = wx.BoxSizer(wx.HORIZONTAL)
-        self.light_label = wx.StaticText(self, label="Version:")
+        self.light_label = wx.StaticText(self, label="Version (F:H) ")
         self.light_text = wx.TextCtrl(self, ID_TC_GET_VERSION, "---", size = (-1, -1))
-        self.light_btn = wx.Button(self, ID_BTN_GET_VERSION, "Version", size=(77,25))
+        self.light_btn = wx.Button(self, ID_BTN_GET_VERSION, "Get Version", size=(77,25))
         
         # scan ->
         
-        self.st_Sw = wx.StaticText(self, -1, "Select Switch: ")
+        self.st_Sw = wx.StaticText(self, -1, "Select Model ")
         self.fst_lb = wx.ComboBox(self, size=(110, -1))
         self.btn_scan = wx.Button(self, ID_BTN_DEV_SCAN, "Search",
                                   size=(77,25))
@@ -146,9 +149,9 @@ class FirmwareWindow(wx.Panel):
         wx.BoxSizer(wx.HORIZONTAL)
         
         self.szr_version.AddMany([
-            (10,10,0),
+            (10,50,0),
             (self.light_label, 0, wx.ALIGN_LEFT | wx.ALIGN_CENTER_VERTICAL),
-            (60,10,0),
+            (27,10,0),
             (self.light_text, 0, wx.ALIGN_LEFT | wx.ALIGN_CENTER_VERTICAL),
             (10,10,0),
             (self.light_btn, 0, wx.ALIGN_LEFT | wx.ALIGN_CENTER_VERTICAL),
@@ -202,7 +205,8 @@ class FirmwareWindow(wx.Panel):
         # Set size of frame
         self.vbox.Fit(self)
         self.Layout()
-
+        
+       
 
         self.light_btn.Bind(wx.EVT_BUTTON, self.readVersion)
         
@@ -219,42 +223,48 @@ class FirmwareWindow(wx.Panel):
         self.Bind(wx.EVT_TIMER, self.FwUpdateTimer, self.timer_fu)
         
         EVT_RESULT(self, self.SearchEvent)
+        
 
-        self.switch = None
+        self.model = None
 
-    def readVersion(self, e):
-        # self.log_window.log_message(f"Successfully Connected")
-        if self.switch is None:
-            wx.MessageBox("Please connect to a switch first", "Error", wx.OK | wx.ICON_ERROR)
-            return
+    def get_check_version(self):
+        """Retrieves the version from the model and handles errors."""
         try:
-            # Call get_version and expect a tuple (status, version_string)
-            response = self.switch.get_version()
-            
+            # Call get_version on the model
+            response = self.model.get_version()
+
             # Check if response is valid and contains the expected tuple structure
             if response and isinstance(response, tuple) and len(response) == 2:
                 status, version_string = response
                 # Strip whitespace and newline characters from the version string
-                self.version_string = version_string.strip()
-                self.log_window.log_message(f"\nFirmware Version(F:H)  {self.version_string}")
-                self.light_text.SetValue(self.version_string)
+                ver_update = version_string.strip()
+                return ver_update
             else:
                 wx.MessageBox("Unexpected response format", "Error", wx.OK | wx.ICON_ERROR)
+                return None
         except Exception as ex:
             print(ex)
             wx.MessageBox("An error occurred while getting the version", "Error", wx.OK | wx.ICON_ERROR)
+            return None
+   
+    def readVersion(self, e):
+        """Handles the action of reading the firmware version."""
+        if self.model is None:
+            wx.MessageBox("Please connect to a model first", "Error", wx.OK | wx.ICON_ERROR)
+            return
+
+        # Call get_version and handle the retrieved version string
+        version_string = self.get_check_version()
+        if version_string:
+            self.log_window.log_message(f"Firmware and Hardware Version(F:H)  {version_string}\n")
+            self.light_text.SetValue(version_string)
 
 
-    def connect_to_switch(self, port):
-        self.switch = switch2450.Switch2450(port)
-        if self.switch.connect():
-            return True
-        else:
-           
-            return False
-  
-    def set_switch(self, switch):
-        self.switch = switch
+    def connect_to_model(self, port):
+        self.model = model2450.Model2450(port)
+
+    def set_model(self, model):
+        self.model = model
         
     def updateBatchLocation(self, pathname):
         self.hexPath = pathname
@@ -520,7 +530,6 @@ class FirmwareWindow(wx.Panel):
     def parse_dev_type(self):
         resp = self.read_avr_oned()
         if resp == b'\r':
-            print("Dev code selected = 0x44\n")
             self.log_window.log_message(f"Dev code selected = 0x44\n")
             return True
         else:
@@ -707,7 +716,7 @@ class FirmwareWindow(wx.Panel):
         self.timer_lp.Stop()
     
     def ScanDevice(self, evt):
-        # self.devlist = searchswitch.get_switches()
+        # self.devlist = searchmodel.get_modeles()
         # print(self.devlist)
         wx.PostEvent(self, FirmwareUpdate("print"))
         wx.PostEvent(self, FirmwareUpdate("search"))
@@ -727,14 +736,13 @@ class FirmwareWindow(wx.Panel):
             self.log_window.log_message("\nSearching Devices ...")
             # print("Searching Devices ...\n")
             # self.top.print_on_log("Searching Devices ...\n")
-    
     def get_devices(self):    
         devlist = devControl.search_device()
         print(devlist)
         if (wx.IsBusy()):
             wx.EndBusyCursor()
 
-        dev_list = devlist["switches"]
+        dev_list = devlist["models"]
         if(len(dev_list) == 0):
             # self.top.print_on_log("No Devices found\n")
             self.log_window.log_message("\nNo Devices found")
@@ -760,7 +768,7 @@ class FirmwareWindow(wx.Panel):
     
     
     
-
+      
     def get_selected_com(self):        
         scval = self.fst_lb.GetValue()
         txt = scval.split("(")
@@ -779,10 +787,9 @@ class FirmwareWindow(wx.Panel):
                 self.mem_addr = list(self.mem_flash.keys())
                 self.mem_addr.sort()
                 selcom = self.get_selected_com()
-                print("com:", selcom)
-                self.sw = switch2450.Switch2450(selcom)
+                self.sw = model2450.Model2450(selcom)
                 print(self.sw)
-                # self.sw2 = switch3142.Switch3142(selcom)
+                # self.sw2 = model3142.model3142(selcom)
                 if(self.sw.connect()):
                     self.fw_seq = DO_RESET
                     self.timer_fu.Start(1000)
