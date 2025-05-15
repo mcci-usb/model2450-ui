@@ -1,32 +1,27 @@
+
 ##############################################################################
 # 
-# Module: firmwareWindow.py
+# Module: firmwarewindow.py
 #
 # Description:
-#     Update the firmware file.
+#      Update the firmware file.
 #
 # Author:
-#     Vinay N, MCCI Corporation Aug 2024
+#     Vinay N, MCCI Corporation May 2025
 #
 # Revision history:
-#     V1.0.0 Mon Aug 12 2024 01:00:00   Vinay N 
+#     V2.0.0 Mon May 2025 01:00:00   Vinay N 
 #       Module created
-
 ##############################################################################
-
 import wx
 from uiGlobal import *
 import devControl
-# from model2450lib import searchmodel
-# from model2450lib import model2450
-from model2450lib import searchmodel
-from model2450lib import model2450
-import serial.tools.list_ports
+from model2450lib.serial import searchmodelboot
+from model2450lib.serial import models2450
 
+import serial.tools.list_ports
 import os
 import sys
-
-
 
 ID_TC_GET_VERSION = 1000
 ID_BTN_GET_VERSION = 1001
@@ -71,8 +66,6 @@ CMD_WRITE_FLASH = 0x42     # 'B'
 CMD_READ_FLASH = 0x67      # 'g'
 CMD_LEAVE_PROGMODE = 0x4C  # 'C
 
-
-
 # class FirmwareUpdate(wx.PyEvent):
 class FirmwareUpdate(wx.PyEvent):
     def __init__(self, data):
@@ -81,14 +74,15 @@ class FirmwareUpdate(wx.PyEvent):
         self.SetEventType(EVT_RESULT_ID)
         self.data = data
 
-class FirmwareWindow(wx.Panel):
-    def __init__(self, parent, log_window):
-        super(FirmwareWindow, self).__init__(parent)
+
+class FirmwarePanel(wx.Panel):
+    def __init__(self, parent, log_window, device=None):
+        super(FirmwarePanel, self).__init__(parent)
         self.SetBackgroundColour("White")
         self.parent = parent
-
+        self.device = device
         self.log_window = log_window
-
+        
         self.wait_flg = True
 
         self.fw_seq = None
@@ -109,111 +103,63 @@ class FirmwareWindow(wx.Panel):
         self.clist = []
         self.modellist = []
         self.addmodellist = []
-        
         self.dlist = "COM3"
 
-        # self.main_sizer = wx.BoxSizer(wx.VERTICAL)
-        
-        ##################################################################
-        # Light control
-        # self.light_sizer = wx.BoxSizer(wx.HORIZONTAL)
-        self.light_label = wx.StaticText(self, label="Version (F:H) ")
-        self.light_text = wx.TextCtrl(self, ID_TC_GET_VERSION, "---", size = (-1, -1))
-        self.light_btn = wx.Button(self, ID_BTN_GET_VERSION, "Get Version", size=(77,25))
-        
-        # scan ->
-        
-        self.st_Sw = wx.StaticText(self, -1, "Select Model ")
-        self.fst_lb = wx.ComboBox(self, size=(110, -1))
-        self.btn_scan = wx.Button(self, ID_BTN_DEV_SCAN, "Search",
-                                  size=(77,25))
-        
-        self.st_seqname = wx.StaticText(self, -1, "Browse the hex file")
-        self.tc_bloc = wx.TextCtrl(self, -1, size=(250,-1), 
-                                            style = wx.TE_CENTRE |
-                                            wx.TE_PROCESS_ENTER,
-                                            validator=NumericValidator())
-        self.btn_load = wx.Button(self, -1, "Load", size=(60,25))
-        self.st_mty = wx.StaticText(self, -1, " ")
-        
-        # self.st_fw = wx.StaticText(self, -1, "Update Start")
-        self.btn_up_start = wx.Button(self, -1, "Update", size=(70,25))
-        self.btn_cancel = wx.Button(self, -1, "Cancel", size=(70,25))
 
-        
-        self.szr_version = wx.BoxSizer(wx.HORIZONTAL)
+        vbox = wx.BoxSizer(wx.VERTICAL)
+
+        # --- Top Section: Model Selection ---
         self.szr_top = wx.BoxSizer(wx.HORIZONTAL)
+        self.st_Sw = wx.StaticText(self, -1, "Select Model")
+        self.fst_lb = wx.ComboBox(self, size=(110, -1))
+        self.btn_scan = wx.Button(self, -1, "Search", size=(77, 25))
+        self.szr_top.Add(self.st_Sw, 0, wx.ALL | wx.CENTER, 5)
+        self.szr_top.AddSpacer(30)  # This will add the 20px gap
+        self.szr_top.Add(self.fst_lb, 0, wx.ALL, 5)
+        self.szr_top.Add(self.btn_scan, 0, wx.ALL, 5)
+
+        # --- Middle Section: Hex File Selection self.port_text.Select(0)  # Select the first port in the list---
         self.szr_load = wx.BoxSizer(wx.HORIZONTAL)
+        self.st_seqname = wx.StaticText(self, -1, "Browse the hex file")
+        self.tc_bloc = wx.TextCtrl(self, -1, size=(250, -1), 
+                                   style=wx.TE_CENTRE | wx.TE_PROCESS_ENTER)
+        self.btn_load = wx.Button(self, -1, "Load", size=(60, 25))
+        self.szr_load.Add(self.st_seqname, 0, wx.ALL | wx.CENTER, 5)
+        self.szr_load.Add(self.tc_bloc, 0, wx.ALL, 5)
+        self.szr_load.Add(self.btn_load, 0, wx.ALL, 5)
+
+        # --- Bottom Section: Update / Cancel Buttons ---
         self.szr_update = wx.BoxSizer(wx.HORIZONTAL)
-        
-        wx.BoxSizer(wx.HORIZONTAL)
-        
-        self.szr_version.AddMany([
-            (10,50,0),
-            (self.light_label, 0, wx.ALIGN_LEFT | wx.ALIGN_CENTER_VERTICAL),
-            (27,10,0),
-            (self.light_text, 0, wx.ALIGN_LEFT | wx.ALIGN_CENTER_VERTICAL),
-            (10,10,0),
-            (self.light_btn, 0, wx.ALIGN_LEFT | wx.ALIGN_CENTER_VERTICAL),
-            (10,10,0)
-            ])
-        
-        self.szr_top.AddMany([
-            (10,50,0),
-            (self.st_Sw, 0, wx.ALIGN_LEFT | wx.ALIGN_CENTER_VERTICAL),
-            (27,10,0),
-            (self.fst_lb, 0, wx.ALIGN_LEFT | wx.ALIGN_CENTER_VERTICAL),
-            (10,10,0),
-            (self.btn_scan, 0, wx.ALIGN_LEFT | wx.ALIGN_CENTER_VERTICAL),
-            (10,10,0),
-            ])
-        
-        self.szr_load.AddMany([
-            (10,50,0),
-            (self.st_seqname, 0, wx.ALIGN_LEFT | wx.ALIGN_CENTER_VERTICAL),
-            (10,10,0),
-            (self.tc_bloc, 0, wx.ALIGN_LEFT | wx.ALIGN_CENTER_VERTICAL),
-            (10,10,0),
-            (self.btn_load, 0, wx.ALIGN_LEFT | wx.ALIGN_CENTER_VERTICAL),
-            (10,10,0),
-            (self.st_mty, 0, wx.ALIGN_LEFT | wx.ALIGN_CENTER_VERTICAL)
-            ])
-        
-        self.szr_update.AddMany([
-            (150,70,0),
-            (self.btn_up_start, 0, wx.ALIGN_LEFT | wx.ALIGN_CENTER),
-            (20,0,0),
-            (self.btn_cancel, 0, wx.ALIGN_LEFT | wx.ALIGN_CENTER)
-            ])
+        self.st_mty = wx.StaticText(self, -1, " ")  # Optional: You can remove this if you don't want extra space
+        self.btn_up_start = wx.Button(self, -1, "Update", size=(70, 25))
+        self.btn_cancel = wx.Button(self, -1, "Cancel", size=(70, 25))
 
-        
-        self.vbox = wx.BoxSizer(wx.VERTICAL)
-        self.vbox.AddMany([
-            (10,10,0),
-            (self.szr_version, 0, wx.EXPAND | wx.ALL),
-            (10,10,0),
-            (self.szr_top, 0, wx.EXPAND | wx.ALL),
-            (10,10,0),
-            (self.szr_load, 0, wx.EXPAND | wx.ALL),
-            (10,10,0),
-            (self.szr_update, 0, wx.EXPAND | wx.ALL),
-            (10,10,0)
+        # Add the buttons and align them to the center
+        self.szr_update.Add(self.st_mty,  0, wx.ALL | wx.ALIGN_CENTER, 5)  # This can be removed if not needed
+        self.szr_update.AddSpacer(95)  # This will add the 20px gap
+        self.szr_update.Add(self.btn_up_start, 0, wx.ALL | wx.ALIGN_CENTER, 5)
+        # Add spacer with a width of 20 pixels
+        self.szr_update.AddSpacer(20)  # This will add the 20px gap
+        self.szr_update.Add(self.btn_cancel, 0, wx.ALL | wx.ALIGN_CENTER, 5)
 
-            ])
-        # Set size of frame
-        self.SetSizer(self.vbox)
-        # Set size of frame
-        self.vbox.Fit(self)
-        self.Layout()
-        
-       
 
-        self.light_btn.Bind(wx.EVT_BUTTON, self.readVersion)
+        # --- Version Display ---
+        self.version_text = wx.StaticText(self, label="Version (F:H):    No version")
+
+        # --- Add to Main Vertical BoxSizer ---
+        vbox.Add(self.version_text, 0, wx.ALL, 10)
+        vbox.Add(self.szr_top, 0, wx.EXPAND | wx.ALL, 5)
+        vbox.Add(self.szr_load, 0, wx.EXPAND | wx.ALL, 5)
         
+        vbox.Add(self.szr_update, 0, wx.EXPAND | wx.ALL, 5)
+
+        self.SetSizer(vbox)
+
+        # Event Bindings
         self.btn_load.Bind(wx.EVT_BUTTON, self.LoadBatch)
         self.btn_scan.Bind(wx.EVT_BUTTON, self.ScanDevice)
         self.btn_up_start.Bind(wx.EVT_BUTTON, self.update_start)
-        # self.btn_cancel.Bind(wx.EVT_BUTTON, self.update_cancel)
+        self.btn_cancel.Bind(wx.EVT_BUTTON, self.update_cancel)
         
         # The Timer class allows you to execute code at specified intervals.
         self.timer_lp = wx.Timer(self)
@@ -223,55 +169,122 @@ class FirmwareWindow(wx.Panel):
         self.Bind(wx.EVT_TIMER, self.FwUpdateTimer, self.timer_fu)
         
         EVT_RESULT(self, self.SearchEvent)
-        
 
-        self.model = None
+        if self.device:
+            self.update_version()
 
-    def get_check_version(self):
-        """Retrieves the version from the model and handles errors."""
-        try:
-            # Call get_version on the model
-            response = self.model.get_version()
+    def update_version(self):
+        """Fetch the version from the device and update the StaticText."""
+        if self.device:
+            try:
+                version = self.device.get_version()
+                # print("Version(F:H):", version)
+                self.version_text.SetLabel(f"Version (F:H):   {version}")
+            except Exception as e:
+                self.version_text.SetLabel(f"Error fetching version: {str(e)}")
+        else:
+            self.version_text.SetLabel("Device not connected")
 
-            # Check if response is valid and contains the expected tuple structure
-            if response and isinstance(response, tuple) and len(response) == 2:
-                status, version_string = response
-                # Strip whitespace and newline characters from the version string
-                ver_update = version_string.strip()
-                return ver_update
-            else:
-                wx.MessageBox("Unexpected response format", "Error", wx.OK | wx.ICON_ERROR)
-                return None
-        except Exception as ex:
-            print(ex)
-            wx.MessageBox("An error occurred while getting the version", "Error", wx.OK | wx.ICON_ERROR)
-            return None
+    def set_device(self, device):
+        """Set the device and update the version."""
+        self.device = device
+        self.update_version()
+    
+    def ScanDevice(self, evt):
+        wx.PostEvent(self, FirmwareUpdate("print"))
+        wx.PostEvent(self, FirmwareUpdate("search"))
+        wx.BeginBusyCursor()
+    
+    def clear_device(self):
+        """Clear the device and version information."""
+        self.device = None
+        self.version_text.SetLabel("Version (F:H):    No version")
+
+    def SearchTimer(self, evt):
+        wx.PostEvent(self, FirmwareUpdate("search"))
+        self.timer_lp.Stop()
    
-    def readVersion(self, e):
-        """Handles the action of reading the firmware version."""
-        if self.model is None:
-            wx.MessageBox("Please connect to a model first", "Error", wx.OK | wx.ICON_ERROR)
+    def load_file(self):
+        self.dirname=""
+        dlg = wx.FileDialog(self, "Load File", self.dirname, "", "*.hex", 
+                                wx.FD_OPEN | wx.FD_FILE_MUST_EXIST)
+        
+        if dlg.ShowModal() == wx.ID_CANCEL:
             return
-
-        # Call get_version and handle the retrieved version string
-        version_string = self.get_check_version()
-        if version_string:
-            self.log_window.log_message(f"Firmware and Hardware Version(F:H)  {version_string}\n")
-            self.light_text.SetValue(version_string)
-
-
-    def connect_to_model(self, port):
-        self.model = model2450.Model2450(port)
-
-    def set_model(self, model):
-        self.model = model
         
-    def updateBatchLocation(self, pathname):
-        self.hexPath = pathname
-    def LoadBatch(self, event):
-        pathname = self.load_file()
-        self.updateBatchLocation(pathname)
+        pathname = dlg.GetPath()
+        self.tc_bloc.SetValue(pathname)
+        try:
+            self.mappedSw = {}
+            self.main_flg = False
+            self.end_flg = False
+            self.finseq = []
+            if os.path.exists(pathname):
+                with open(pathname) as fobj:
+                    for line in fobj:
+                        pass
+        except IOError:
+            wx.LogError("Can not open file '%s', " % pathname)
+        return pathname
+    
+    
+    def SearchEvent(self, event):
+        if event.data is None:
+            print("No Search event\n")
+            # self.top.print_on_log("No Search event\n")
+        elif event.data == "search":
+            #self.btn_scan.Enable(False)
+            self.btn_scan.Unbind(wx.EVT_BUTTON)
+            # self.get_devices()
+            self.get_boot()
+            wx.GetApp().Yield()
+            self.btn_scan.Bind(wx.EVT_BUTTON, self.ScanDevice)
+        elif event.data == "print":
+            self.log_window.log_message("\nSearching Devices ...")
+    
+    def get_boot(self):
+        b = searchmodelboot.find_switch()
         
+        if (wx.IsBusy()):
+            wx.EndBusyCursor()
+        self.fst_lb.Clear()
+        self.fst_lb.Append(b)
+        self.fst_lb.SetSelection(0)
+            
+    def get_devices(self):    
+        # devlist = get_models()
+        devlist = devControl.search_device()
+        print("dev :", devlist)
+        print(devlist)
+        if (wx.IsBusy()):
+            wx.EndBusyCursor()
+
+        dev_list = devlist["models"]
+        if(len(dev_list) == 0):
+            # self.top.print_on_log("No Devices found\n")
+            self.log_window.log_message("\nNo Devices found")
+            self.fst_lb.Clear()
+        else:
+            key_list = []
+            val_list = []
+
+            nlist = []
+            
+            for i in range(len(dev_list)):
+                key_list.append(dev_list[i]["port"])
+                val_list.append(dev_list[i]["model"])
+            
+            self.fst_lb.Clear()
+
+            for i in range(len(val_list)):
+                str1 = val_list[i]+"("+key_list[i]+")"
+                if val_list[i] == '2450' or val_list[i] == '2450':
+                    self.fst_lb.Clear()
+                    nlist.append(val_list[i]+"("+key_list[i]+")")
+                    self.fst_lb.Append(nlist)
+                    self.fst_lb.SetSelection(0)
+    
+    
     def FwUpdateTimer(self, evt):
         self.timer_fu.Stop()
         if self.fw_seq == DO_RESET:
@@ -340,12 +353,11 @@ class FirmwareWindow(wx.Panel):
                     self.flash_flg = False
                     self.leave_prog_mode()
                     self.timer_fu.Start(100)
-                else:
-                  
+                else: 
                     self.log_window.log_message(f"writing flash (" + str(len(self.mem_addr)) + ") bytes")
                     self.flash_addr = self.mem_addr[0]
                     self.byte_addr = self.mem_addr[0]
-                    self.log_window.log_message(".")
+                    self.log_window.log_inline(".")
                 
                     self.set_address()
                     self.timer_fu.Start(100)
@@ -356,7 +368,7 @@ class FirmwareWindow(wx.Panel):
         elif self.fw_seq == WRITE_BLOCK:
             if self.parse_set_address():
                 if self.byte_addr <= len(self.mem_addr):
-                    self.log_window.log_message(".")
+                    self.log_window.log_inline(".")
                     self.flash_addr += 0x40
                     self.set_address()
                     self.timer_fu.Start(100)
@@ -372,93 +384,7 @@ class FirmwareWindow(wx.Panel):
             if self.parse_set_address():
                 # self.top.print_on_log("Firmware update success!\n")
                 self.log_window.log_message(f"Firmware update success!\n")
-                # print("Firmware update success!\n")
     
-    def load_block_flash(self):
-        mybarr = []
-        mybarr.append(0x42)
-        mybarr.append(0x00)
-        mybarr.append(0x80)
-        mybarr.append(0x46)
-        for i in range(128):
-            try:
-                mybarr.append(self.mem_flash[self.byte_addr])
-            except:
-                mybarr.append(0xFF)
-            self.byte_addr += 1
-        self.write_avr_hba(mybarr)
-        self.fw_seq = WRITE_BLOCK
-    
-    def exit_boot_loader(self):
-        self.write_avr('E')
-        self.fw_seq = EXIT_BOOTLOADER
-    
-    def leave_prog_mode(self):
-        self.write_avr('L')
-        self.fw_seq = LEAVE_PROGMODE
-    
-    def set_address(self):
-        addstr = (self.flash_addr).to_bytes(2, byteorder='big').hex()
-        addbyte = bytes.fromhex(addstr)
-        mybyte = []
-        mybyte.append(0x41)
-        for byte in addbyte:
-            mybyte.append(byte)
-        self.write_avr_hba(mybyte)
-
-        self.fw_seq = SET_ADDRESS        
-        
-
-    def read_efuse(self):
-        self.write_avr(CMD_READ_EFUSE)
-        self.fw_seq = READ_EFUSE
-
-    def read_lfuse(self):
-        self.write_avr(CMD_READ_LFUSE)
-        self.fw_seq = READ_LFUSE
-
-    def read_hfuse(self):
-        self.write_avr(CMD_READ_HFUSE)
-        self.fw_seq = READ_HFUSE
-    
-    def read_dev_signature(self):
-        self.write_avr(CMD_READ_DEVSIG)
-        self.fw_seq = READ_DEV_SIGNATURE
-
-    def get_into_progmode(self):
-        self.write_avr(CMD_GET_PROGMODE)
-        self.fw_seq = GET_INTO_PROGMODE
-    
-    def select_dev_type(self):
-        self.write_avr_ba("TD")
-        self.fw_seq = SELECT_DEV_TYPE
-                
-    def get_dev_code(self):
-        self.write_avr(CMD_GET_DEVCODE)
-        self.fw_seq = GET_DEV_CODE
-
-    def check_block_support(self):
-        self.write_avr(CMD_CHECK_BLOCKSUPP)
-        self.fw_seq = CHECK_BLOCK_SUPPORT
-
-    def check_auto_incr(self):
-        self.write_avr(CMD_CHECK_AUTOINCR)
-        self.fw_seq = CHECK_AUTO_INC
-
-    def get_sw_version(self):
-        self.write_avr(CMD_GET_SWVERSION)
-        self.fw_seq = GET_SW_VERSION
-
-    def get_programmer_type(self):
-        self.write_avr(CMD_GET_PROGTYPE)
-        self.fw_seq = GET_PROG_TYPE
-
-    def get_sw_identifier(self):
-        self.rx_flg = True
-        self.write_avr(CMD_GET_SWIDENTIFIER)
-        self.fw_seq = GET_SW_IDENTIFIER
-
-
     def parse_set_address(self):
         resp = self.read_avr_oned()
         if resp == b'\r':
@@ -466,8 +392,7 @@ class FirmwareWindow(wx.Panel):
         else:
             self.log_window.log_message(f"Error when setting flash address\n")
             return False
-
-
+    
     def parse_efuse(self):
         resp = self.read_avr_ba()
         if resp != None:
@@ -478,7 +403,7 @@ class FirmwareWindow(wx.Panel):
         else:
             print("Error when reading efuse\n")
             return False
- 
+    
     def parse_hfuse(self):
         resp = self.read_avr_ba()
         if resp != None:
@@ -489,7 +414,7 @@ class FirmwareWindow(wx.Panel):
         else:
             print("Error when reading hfuse\n")
             return False
-
+    
     def parse_lfuse(self):
         resp = self.read_avr_ba()
         if resp != None:
@@ -516,7 +441,6 @@ class FirmwareWindow(wx.Panel):
             self.log_window.log_message(f"Error when reading dev signature\n")
             print("Error when reading dev signature\n")
             return False
-        
     
     def parse_get_progmode(self):
         resp = self.read_avr_oned()
@@ -526,7 +450,7 @@ class FirmwareWindow(wx.Panel):
         else:
             self.log_window.log_message(f"Error when entering into prog mode\n")
             return False
-
+        
     def parse_dev_type(self):
         resp = self.read_avr_oned()
         if resp == b'\r':
@@ -536,7 +460,7 @@ class FirmwareWindow(wx.Panel):
             print("Error when checking the supported device list\n")
             self.log_window.log_message(f"Error when checking the supported device list\n")
             return False
-
+    
     def parse_dev_code(self):
         resp = self.read_avr_ba()
         if resp != None:
@@ -547,7 +471,7 @@ class FirmwareWindow(wx.Panel):
         else:
             self.log_window.log_message(f"Error when checking the supported device list\n")
             return False
-
+    
     def parse_block_support(self):
         resp = self.read_avr_ba()
         if resp != None:
@@ -571,7 +495,7 @@ class FirmwareWindow(wx.Panel):
         else:
             self.log_window.log_message(f"Error when checking auto addr incement support\n")
             return False
-
+    
     def parse_sw_version(self):
         resp = self.read_avr()
         if resp != None:
@@ -601,25 +525,114 @@ class FirmwareWindow(wx.Panel):
         else:
             self.log_window.log_message(f"Programmer Id read error = "+resp+"\n")
             return False
-
+    
     def open_avr_port(self):
-        self.avrHand = serial.Serial()
-        self.avrHand.port = self.fw_port
-        self.avrHand.baudrate = 57600
-        self.avrHand.bytesize = 8
-        self.avrHand.parity = serial.PARITY_NONE
-        self.avrHand.timeout = 0
-        self.avrHand.stopbits = serial.STOPBITS_ONE
-
         try:
-            self.avrHand.open()
-            return True
-        except:
-            self.avrHand = None
+            self.avrHand = serial.Serial(
+                port=self.fw_port,
+                baudrate=115200,
+                bytesize=serial.EIGHTBITS,
+                parity=serial.PARITY_NONE,
+                stopbits=serial.STOPBITS_ONE,
+                timeout=1
+            )
+            if self.avrHand.is_open:
+                self.log_window.log_message(f"Opened port {self.fw_port}\n")
+                return True
+            else:
+                self.log_window.log_message(f"Failed to open port {self.fw_port}\n")
+                return False
+        except Exception as e:
+            self.log_window.log_message(f"Error opening port {self.fw_port}: {e}\n")
             return False
-        pass
+        
+    def get_sw_identifier(self):
+        self.rx_flg = True
+        self.write_avr(CMD_GET_SWIDENTIFIER)
+        self.fw_seq = GET_SW_IDENTIFIER
+    
+    def get_programmer_type(self):
+        self.write_avr(CMD_GET_PROGTYPE)
+        self.fw_seq = GET_PROG_TYPE
+    
+    def get_sw_version(self):
+        self.write_avr(CMD_GET_SWVERSION)
+        self.fw_seq = GET_SW_VERSION
+    
+    def get_dev_code(self):
+        self.write_avr(CMD_GET_DEVCODE)
+        self.fw_seq = GET_DEV_CODE
+    
+    def check_auto_incr(self):
+        self.write_avr(CMD_CHECK_AUTOINCR)
+        self.fw_seq = CHECK_AUTO_INC
+    
+    def check_block_support(self):
+        self.write_avr(CMD_CHECK_BLOCKSUPP)
+        self.fw_seq = CHECK_BLOCK_SUPPORT
+    
+    def get_dev_code(self):
+        self.write_avr(CMD_GET_DEVCODE)
+        self.fw_seq = GET_DEV_CODE
+    
+    def select_dev_type(self):
+        self.write_avr_ba("TD")
+        self.fw_seq = SELECT_DEV_TYPE
+    
+    def get_into_progmode(self):
+        self.write_avr(CMD_GET_PROGMODE)
+        self.fw_seq = GET_INTO_PROGMODE
+    
+    def read_dev_signature(self):
+        self.write_avr(CMD_READ_DEVSIG)
+        self.fw_seq = READ_DEV_SIGNATURE
+    
+    def read_efuse(self):
+        self.write_avr(CMD_READ_EFUSE)
+        self.fw_seq = READ_EFUSE
 
+    def read_lfuse(self):
+        self.write_avr(CMD_READ_LFUSE)
+        self.fw_seq = READ_LFUSE
 
+    def read_hfuse(self):
+        self.write_avr(CMD_READ_HFUSE)
+        self.fw_seq = READ_HFUSE
+    
+    def exit_boot_loader(self):
+        self.write_avr('E')
+        self.fw_seq = EXIT_BOOTLOADER
+    
+    def leave_prog_mode(self):
+        self.write_avr('L')
+        self.fw_seq = LEAVE_PROGMODE
+    
+    def set_address(self):
+        addstr = (self.flash_addr).to_bytes(2, byteorder='big').hex()
+        addbyte = bytes.fromhex(addstr)
+        mybyte = []
+        mybyte.append(0x41)
+        for byte in addbyte:
+            mybyte.append(byte)
+        self.write_avr_hba(mybyte)
+
+        self.fw_seq = SET_ADDRESS
+    
+    def load_block_flash(self):
+        mybarr = []
+        mybarr.append(0x42)
+        mybarr.append(0x00)
+        mybarr.append(0x80)
+        mybarr.append(0x46)
+        for i in range(128):
+            try:
+                mybarr.append(self.mem_flash[self.byte_addr])
+            except:
+                mybarr.append(0xFF)
+            self.byte_addr += 1
+        self.write_avr_hba(mybarr)
+        self.fw_seq = WRITE_BLOCK
+        
     def read_avr_ba(self):
         rxdata = None
         try:
@@ -627,7 +640,6 @@ class FirmwareWindow(wx.Panel):
         except serial.SerialException as serr:
             print("\nIssue in Serial port: ", serr)
         return rxdata
-
 
     def read_avr_oned(self):
         rxdata = None
@@ -637,7 +649,6 @@ class FirmwareWindow(wx.Panel):
             self.log_window.log_message(f"Issue in Serial port: "+str(serr)+"\n")
             # self.top.print_on_log("Issue in Serial port: "+str(serr)+"\n")
         return rxdata
-
 
     def read_avr(self):
         rxdata = None
@@ -653,7 +664,6 @@ class FirmwareWindow(wx.Panel):
             # print("Issue in Serial port: ", serr)
         return rxdata
     
-
     def write_avr_hba(self,param):
         ba = bytearray(param)
         try:
@@ -685,94 +695,45 @@ class FirmwareWindow(wx.Panel):
                 if port[2].rstrip(' ') == "USB IO board":
                     return port[1]
         return None
-        
-    def load_file(self):
-        self.dirname=""
-        dlg = wx.FileDialog(self, "Load File", self.dirname, "", "*.hex", 
-                                wx.FD_OPEN | wx.FD_FILE_MUST_EXIST)
-        
-        if dlg.ShowModal() == wx.ID_CANCEL:
-            return
-        
-        pathname = dlg.GetPath()
-        self.tc_bloc.SetValue(pathname)
-        try:
-            self.mappedSw = {}
-            self.main_flg = False
-            self.end_flg = False
-            self.finseq = []
-            if os.path.exists(pathname):
-                with open(pathname) as fobj:
-                    for line in fobj:
-                        pass
-        except IOError:
-            wx.LogError("Can not open file '%s', " % pathname)
-        return pathname
-    
-    
-    
-    def SearchTimer(self, evt):
-        wx.PostEvent(self, FirmwareUpdate("search"))
-        self.timer_lp.Stop()
-    
-    def ScanDevice(self, evt):
-        # self.devlist = searchmodel.get_modeles()
-        # print(self.devlist)
-        wx.PostEvent(self, FirmwareUpdate("print"))
-        wx.PostEvent(self, FirmwareUpdate("search"))
-        wx.BeginBusyCursor()
-    
-    def SearchEvent(self, event):
-        if event.data is None:
-            print("No Search event\n")
-            # self.top.print_on_log("No Search event\n")
-        elif event.data == "search":
-            #self.btn_scan.Enable(False)
-            self.btn_scan.Unbind(wx.EVT_BUTTON)
-            self.get_devices()
-            wx.GetApp().Yield()
-            self.btn_scan.Bind(wx.EVT_BUTTON, self.ScanDevice)
-        elif event.data == "print":
-            self.log_window.log_message("\nSearching Devices ...")
-            # print("Searching Devices ...\n")
-            # self.top.print_on_log("Searching Devices ...\n")
-    def get_devices(self):    
-        devlist = devControl.search_device()
-        print(devlist)
-        if (wx.IsBusy()):
-            wx.EndBusyCursor()
 
-        dev_list = devlist["models"]
-        if(len(dev_list) == 0):
-            # self.top.print_on_log("No Devices found\n")
-            self.log_window.log_message("\nNo Devices found")
-            self.fst_lb.Clear()
+    # Dummy Event Handlers (You will define them later)
+    def updateBatchLocation(self, pathname):
+        self.hexPath = pathname
+        
+    def LoadBatch(self, event):
+        pathname = self.load_file()
+        self.updateBatchLocation(pathname)
+
+
+    def get_selected_com(self):
+        """
+        Get the selected COM port from the list box.
+        Expected format: "COM3 (Description)" so we return the part inside the parentheses.
+        If the format is not as expected but the string starts with "COM", return the entire string.
+        If nothing is selected, assume boot mode.
+        """
+        scval = self.fst_lb.GetValue().strip()
+        if not scval:
+            # No value selected; assume device is in boot mode and start firmware update process.
+            self.fw_seq = READ_AVAIL_PORTS
+            self.timer_fu.Start(500)
+            return ""
+
+        # If the string contains parentheses, extract the part inside.
+        if "(" in scval and ")" in scval:
+            # self.top.print_on_log("firmware update started here device is in Normal mode!")
+            txt = scval.split("(")
+            if len(txt) > 1:
+                return txt[1].replace(")", "").strip()
         else:
-            key_list = []
-            val_list = []
-
-            nlist = []
-            
-            for i in range(len(dev_list)):
-                key_list.append(dev_list[i]["port"])
-                val_list.append(dev_list[i]["model"])
-            
-            self.fst_lb.Clear()
-
-            for i in range(len(val_list)):
-                str1 = val_list[i]+"("+key_list[i]+")"
-                if val_list[i] == '2450' or val_list[i] == '2450':
-                    self.fst_lb.Clear()
-                    nlist.append(val_list[i]+"("+key_list[i]+")")
-                    self.fst_lb.Append(nlist)
-    
-    
-    
+            # self.top.print_on_log("firmware update started here device in boot mode!")
+            self.fw_seq = READ_AVAIL_PORTS  # Assuming self.fw_seq is defined in your context.
+            self.timer_fu.Start(500)        # And self.timer_fu is available.
+            # return scval
+            return ""
       
-    def get_selected_com(self):        
-        scval = self.fst_lb.GetValue()
-        txt = scval.split("(")
-        return txt[1].replace(")","")
+        # Otherwise, log the issue and return an empty string.
+        return ""
     
     def update_start(self, event):
         self.bloc = self.tc_bloc.GetValue()
@@ -787,23 +748,53 @@ class FirmwareWindow(wx.Panel):
                 self.mem_addr = list(self.mem_flash.keys())
                 self.mem_addr.sort()
                 selcom = self.get_selected_com()
-                self.sw = model2450.Model2450(selcom)
-                print(self.sw)
-                # self.sw2 = model3142.model3142(selcom)
+                if not selcom:
+                    self.fw_seq = READ_AVAIL_PORTS
+                    self.timer_fu.Start(500)
+                    return
+                self.sw = models2450.Models2450(selcom)
+                
                 if(self.sw.connect()):
                     self.fw_seq = DO_RESET
                     self.timer_fu.Start(1000)
+
     def update_cancel(self, event):
-        self.fw_seq = READ_AVAIL_PORTS
-        self.timer_fu.Start(500)
-                
+        """
+        Simple cancel function for firmware update.
+        Stops the update timer, disconnects the device, and resets the UI.
+        """
+        self.log_window.log_message("\n Cancelled Firmware update !")
+
+        # Stop the timer if running
+        if self.timer_fu.IsRunning():
+            self.timer_fu.Stop()
+            # print("Timer stopped.")
+
+        # Disconnect the device if connected
+        try:
+            if self.sw:
+                self.sw.disconnect()
+                self.log_window.log_message("\n Model2450 Disconnected !")
+        except Exception as e:
+            print(f"Error while disconnecting: {e}")
+
+        # Reset UI buttons
+        self.btn_up_start.Enable(True)
+        self.btn_cancel.Enable(True)
+
+
+    
+    # def update_cancel(self, event):
+    #     self.fw_seq = READ_AVAIL_PORTS
+    #     self.timer_fu.Start(500)
+        
     def unpack_hex_file(self, hfloc):
         lines = tuple(open(hfloc, "r"))
 
         self.mem_flash = {}
         for line in lines:
             self.unpack_line(line)
-    
+            
     def unpack_line(self, line):
         if line[0] == ":" and line[-1] == "\n":
             data_len = int(line[1:3], 16)
@@ -817,6 +808,7 @@ class FirmwareWindow(wx.Panel):
                 for bhex in barr:
                     self.mem_flash[addr_hex] = bhex
                     addr_hex += 1
+                       
     def validate_hex_file(self, hfloc):
         lines = tuple(open(hfloc, "r"))
         status = False
@@ -829,12 +821,3 @@ class FirmwareWindow(wx.Panel):
 
 def EVT_RESULT(win, func):
         win.Connect(-1, -1, EVT_RESULT_ID, func)
-
-def get_devices(top):
-    devlist = devControl.search_device(top)
-    dev_list = devlist["devices"]  
-    
-        
-    
-  
-

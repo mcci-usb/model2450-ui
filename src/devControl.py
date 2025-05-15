@@ -16,6 +16,7 @@
 ##############################################################################
 
 # from model2450lib import searchmodel
+# from model2450lib import searchmodel
 from model2450lib import searchmodel
 from uiGlobal import *
 
@@ -56,12 +57,3 @@ def get_dev_baud(devname):
             devidx = i
             break
     return devidx
-
-def connect_device(swdict):
-    """
-    Connect the device.
-    """
-    print("connect-device:", swdict)
-
-def disconnect_device(self):
-    pass
