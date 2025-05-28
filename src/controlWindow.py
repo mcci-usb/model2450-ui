@@ -17,8 +17,27 @@ import wx
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_wxagg import FigureCanvasWxAgg as FigureCanvas
 import numpy as np
+import csv
+import os
+from wx import FileDialog, FD_SAVE, FD_OVERWRITE_PROMPT
+
+#======================================================================
+# COMPONENTS
+#======================================================================
 
 class PlotPanel(wx.Panel):
+    """
+    A wx.Panel subclass for plotting RGB and light sensor data using matplotlib.
+
+    Features:
+        - Real-time plotting of Red, Green, Blue, and Light values.
+        - Checkbox controls to toggle visibility of each data series.
+        - Zoom in/out functionality for better data inspection.
+
+    Args:
+        parent (wx.Window): The parent wxPython window or panel.
+        rgb_data (dict): Dictionary containing lists of 'R', 'G', 'B', and 'Light' values.
+    """
     def __init__(self, parent, rgb_data):
         wx.Panel.__init__(self, parent, size=wx.Size(400, 400))
         self.rgb_data = rgb_data
@@ -66,6 +85,16 @@ class PlotPanel(wx.Panel):
         self.update_plot(None)
 
     def update_plot(self, event):
+        """
+        Update the matplotlib plot based on current checkbox selections.
+
+        Clears both axes and redraws the RGB and Light data.
+        Each RGB channel (Red, Green, Blue) is plotted on the primary Y-axis.
+        Light data is plotted on the secondary Y-axis (ax2) in orange.
+
+        Args:
+            event (wx.Event): The event object triggering the update. Can be None.
+        """
         self.ax.clear()
         self.ax2.clear()
         self.ax.grid(True)
@@ -127,7 +156,22 @@ class PlotPanel(wx.Panel):
 # import wx
 
 class ControlPanel(wx.Panel):
+    """
+    A wx.Panel that allows control of a connected device to read light and color data,
+    periodically acquire sensor readings, and plot or save the data.
+
+    Includes buttons for manual reads, interval-based acquisition, and controls to display
+    and save RGB and light sensor data.
+    """
     def __init__(self, parent, log_window, device=None):
+        """
+        Initialize the ControlPanel.
+
+        Args:
+            parent (wx.Window): The parent window.
+            log_window (LogWindow): An instance for logging messages.
+            device (optional): An optional connected device instance to interact with.
+        """
         super().__init__(parent)
         
         self.log_window = log_window
@@ -183,12 +227,15 @@ class ControlPanel(wx.Panel):
         self.start_btn = wx.Button(self, label="Start", size=(70, 25))
         self.plot_btn = wx.Button(self, label="Plot", size=(70, 25))
         self.stop_btn = wx.Button(self, label="Stop", size=(70, 25))
+        self.save_csv_btn = wx.Button(self, label="Save CSV", size=(80, 25))
+
 
         self.start_sizer.Add((90, 0))
         self.start_sizer.AddSpacer(8)  # This will add the 20px gap
         self.start_sizer.Add(self.start_btn, flag=wx.ALL, border=10)
         self.start_sizer.Add(self.plot_btn, flag=wx.ALL, border=10)
         self.start_sizer.Add(self.stop_btn, flag=wx.ALL, border=10)
+        self.start_sizer.Add(self.save_csv_btn, flag=wx.ALL, border=10)
         self.main_sizer.Add(self.start_sizer, flag=wx.EXPAND)
 
         self.SetSizer(self.main_sizer)
@@ -198,12 +245,26 @@ class ControlPanel(wx.Panel):
         self.btn_color.Bind(wx.EVT_BUTTON, self.on_color_read)
         self.start_btn.Bind(wx.EVT_BUTTON, self.on_start)
         self.stop_btn.Bind(wx.EVT_BUTTON, self.on_stop)
-        self.plot_btn.Bind(wx.EVT_BUTTON, self.on_plot)
+        self.plot_btn.Bind(wx.EVT_BUTTON, self.on_plot) 
+        self.save_csv_btn.Bind(wx.EVT_BUTTON, self.on_save_csv)
+
 
     def set_device(self, device):
+        """
+        Set the device instance for the control panel.
+
+        Args:
+            device: An object representing the connected device.
+        """
         self.device = device
     
     def on_light_read(self, event):
+        """
+        Handle the "Read Light" button press.
+
+        Reads ambient light from the device and updates the light text control.
+        Logs the result or any errors.
+        """
         if self.device:
             try:
                 # Check if serial port is open
@@ -223,8 +284,44 @@ class ControlPanel(wx.Panel):
             self.tc_light.SetValue("Device not connected")
             self.log_window.log_message("No device connected for light read.\n")
 
+    def on_save_csv(self, event):
+        """
+        Save the collected RGB and light sensor data to a CSV file.
+
+        Opens a file dialog for selecting the save location and writes the data in tabular form.
+        """
+        with FileDialog(self, "Save CSV", wildcard="CSV files (*.csv)|*.csv",
+                        style=FD_SAVE | FD_OVERWRITE_PROMPT) as fileDialog:
+            if fileDialog.ShowModal() == wx.ID_CANCEL:
+                return     # user cancelled
+
+            path = fileDialog.GetPath()
+            try:
+                r = self.rgb_data.get("R", [])
+                g = self.rgb_data.get("G", [])
+                b = self.rgb_data.get("B", [])
+                light = self.rgb_data.get("Light", [])
+                min_len = min(len(r), len(g), len(b), len(light))
+
+                with open(path, 'w', newline='') as csvfile:
+                    writer = csv.writer(csvfile)
+                    writer.writerow(['Time Index', 'Red', 'Green', 'Blue', 'Light'])
+
+                    for i in range(min_len):
+                        writer.writerow([i, r[i], g[i], b[i], light[i]])
+
+                self.log_window.log_message(f"\nSaved RGB and Light data to: {path}")
+
+            except IOError as e:
+                self.log_window.log_message(f"\nFailed to save file: {e}")
 
     def on_color_read(self, event):
+        """
+        Handle the "Read Color" button press.
+
+        Reads the RGB color data from the device and displays it.
+        Logs the result or any errors.
+        """
         if self.device:
             try:
                 color = self.device.get_color()
@@ -236,16 +333,30 @@ class ControlPanel(wx.Panel):
             self.tc_color.SetValue("Device not connected")
 
     def on_start(self, event):
+        """
+        Start periodic reading using a wx.Timer.
+
+        Uses the interval specified in the interval text control.
+        """
         interval_ms = int(self.tc_setint.GetValue())
         self.timer.Start(interval_ms)
         self.log_window.log_message("\nStarted reading data periodically.")
 
     def on_stop(self, event):
+        """
+        Stop the periodic reading if it is currently running.
+        """
         if self.timer.IsRunning():
             self.timer.Stop()
             self.log_window.log_message("\nStopped reading data.")
 
     def on_timer(self, event):
+        """
+        Timer callback for periodic reading.
+
+        Reads light and RGB color data from the device and appends it to the internal dataset.
+        Updates display fields and logs the reading.
+        """
         if self.device:
             try:
                 light = self.device.get_read()
@@ -267,6 +378,11 @@ class ControlPanel(wx.Panel):
                 self.log_window.log_message(f"\nError during timer read: {str(e)}")
 
     def on_plot(self, event):
+        """
+        Open a plot window to visualize the collected RGB and light sensor data.
+
+        Creates a new PlotPanel in a separate frame if not already visible.
+        """
         if self.plot_window is None or not self.plot_window.IsShown():
             self.plot_window = wx.Frame(self, title="RGB and Light Plot", size=(600, 500))
             panel = PlotPanel(self.plot_window, self.rgb_data)

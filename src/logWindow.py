@@ -16,11 +16,15 @@
 import wx
 import sys
 from datetime import datetime
-
 import os
+
+#======================================================================
+# COMPONENTS
+#======================================================================
 
 class LogWindow(wx.Window):
     def __init__(self, parent):
+        """Initialize the LogWindow UI components and layout."""
         super().__init__(parent)
 
         # Create static box with naming of Log Window
@@ -78,6 +82,7 @@ class LogWindow(wx.Window):
         self.Layout()
     
     def log_message(self, message):
+        """Log a message with optional timestamp in the text area."""
         try:
             if self.cb_timestamp.IsChecked():
                 ct = datetime.now()
@@ -89,6 +94,7 @@ class LogWindow(wx.Window):
             print(f"Log message error: {e}")
     
     def log_inline(self, message):
+        """Append a message to the log without a newline."""
         try:
             self.scb.AppendText(message)  # No newline
         except Exception as e:
@@ -123,12 +129,10 @@ class LogWindow(wx.Window):
         Returns:
             None
         """
-        
         # Get the content of the control
         content = self.scb.GetValue()
         self.save_file(content, "*.txt")
-        
-    
+         
     def save_file (self, contents, extension):
         """
         Export the LogWindow/USBTreeWindow content to a file

@@ -22,6 +22,10 @@ import threading
 from model2450lib import model2450
 import time
 
+#======================================================================
+# COMPONENTS
+#======================================================================
+
 def decode_packet(packet_bytes):
     """
     Decode a binary packet into a structured format.
@@ -107,7 +111,10 @@ class Blockframe(wx.Frame):
     def setup_ui(self):
         self.SetTitle("Color Set Window")
         self.SetBackgroundColour("white")
-        self.SetSize((380, 180))
+        self.SetSize((4000, 180))  # Initial size
+
+        self.SetMinSize((400, 180))  # Prevent resizing smaller than this
+        self.SetMaxSize((400, 180))  # Optional: Prevent resizing larger than this
 
         self.panel = wx.Panel(self)
         self.top_vbox = wx.BoxSizer(wx.VERTICAL)
@@ -121,10 +128,12 @@ class Blockframe(wx.Frame):
 
         self.btn_run = wx.Button(self.panel, label="Run")
         self.btn_stop = wx.Button(self.panel, label="Stop")
+        # self.btn_close = wx.Button(self.panel, label="Close")
         self.tc_time = wx.TextCtrl(self.panel, value="%H:%M:%S", style=wx.TE_CENTRE | wx.TE_PROCESS_ENTER)
 
         self.hbox_blink_frames.AddMany([(self.st_lth, 1, wx.ALL, 10), (self.tc_lth, 1, wx.ALL, 10), (self.btn_lth, 1, wx.ALL, 10)])
-        self.hbox_run.AddMany([(self.btn_run, 1, wx.ALL, 10), (self.btn_stop, 1, wx.ALL, 10), (self.tc_time, 1, wx.ALL, 10)])
+        self.hbox_run.AddMany([(self.btn_run, 1, wx.ALL, 10), (self.btn_stop, 1, wx.ALL, 10),(self.tc_time, 1, wx.ALL, 10)])
+        
 
         self.top_vbox.Add(self.hbox_blink_frames, 0, wx.ALIGN_CENTER | wx.ALL, 5)
         self.top_vbox.Add(self.hbox_run, 0, wx.ALIGN_CENTER | wx.ALL, 5)
@@ -141,7 +150,7 @@ class Blockframe(wx.Frame):
         self.timer = wx.Timer(self)
         self.Bind(wx.EVT_TIMER, self.update_time, self.timer)
 
-        self.Bind(wx.EVT_CLOSE, self.OnClose)
+        # self.Bind(wx.EVT_CLOSE, self.OnClose)
 
         # Load Threshold
         self.load_light_threshold()
@@ -196,12 +205,8 @@ class Blockframe(wx.Frame):
         except Exception as ex:
             wx.CallAfter(wx.MessageBox, f"Device update error: {ex}", "Error", wx.OK | wx.ICON_ERROR)
 
-    def OnClose(self, event):
-        self.stop_timer()
-        self.Destroy()
-        event.Skip()  # Good practice to allow wxWidgets to fully process close event
-
     def on_start(self, event):
+        "start the blankframes"
         if not self.keep_running:
             if self.device is None:
                 wx.MessageBox("Please connect a device first.", "Error", wx.OK | wx.ICON_ERROR)
@@ -216,16 +221,20 @@ class Blockframe(wx.Frame):
 
             # Set the timeout (10 or 15 seconds)
             self.timeout_seconds = 10  # Modify this value as needed
-            self.timeout_timer = threading.Timer(self.timeout_seconds, self.on_stop)
+            self.timeout_timer = threading.Timer(self.timeout_seconds, self.do_stop)
             self.timeout_timer.start()
 
             # Optionally start a timer to update the time in the text field
             self.start_timer()
     
     def on_stop(self, event):
+        self.do_stop()
+
+    def do_stop(self):
         if self.keep_running:
             self.keep_running = False
             self.ser.write(b"stop\r\n")
+
     
     def read_serial_data(self):
         buffer = b""
@@ -251,7 +260,6 @@ class Blockframe(wx.Frame):
                     if end_bit or len(payload) < decoded["length"] - 2:
                         try:
                             ascii_payload = buffered_payload.decode("ascii").strip()
-                            print("ascii-payload:", ascii_payload)
                             self.log_window.log_message(ascii_payload)
 
                             if ascii_payload and ascii_payload[0].isalpha():
@@ -295,6 +303,4 @@ class Blockframe(wx.Frame):
         if hasattr(self, 'ser') and self.ser.is_open:
             self.ser.write(b"stop\r\n")
             self.ser.close()
-        if self.serial_thread:
-            self.serial_thread.join()
-        # self.Destroy()
+        self.Hide()  # Instead of self.Destroy()

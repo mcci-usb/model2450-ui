@@ -20,8 +20,27 @@ from model2450lib import searchmodel
 from model2450lib.model2450 import Model2450
 from uiGlobal import *
 
+#======================================================================
+# COMPONENTS
+#======================================================================
+
 class ComDialog(wx.Dialog):
+    """
+    A dialog for discovering and connecting to MCCI Model2450 devices.
+
+    Allows the user to:
+    - Search for available devices.
+    - Select from a dropdown list.
+    - Connect to the selected device.
+    - Pass the connected device to parent control and firmware tabs.
+    """
     def __init__(self, parent):
+        """
+        Initialize the dialog window with UI components.
+
+        Args:
+            parent (wx.Window): The parent frame or panel that opened this dialog.
+        """
         super().__init__(parent, title="Connect Model2450", size=(350, 200))
         self.SetIcon(wx.Icon(os.path.join(os.path.abspath(os.path.dirname(__file__)), "icons", IMG_ICON)))
 
@@ -49,7 +68,11 @@ class ComDialog(wx.Dialog):
 
     def on_search(self, event):
         """
-        Search for available devices and populate the ComboBox.
+        Event handler for the Search button.
+
+        Uses `searchmodel.get_models()` to scan for available devices,
+        then populates the ComboBox with results. Displays a message
+        if no devices are found.
         """
         dev_list = searchmodel.get_models()  # Fetch devices using the searchmodel
         print(dev_list)
@@ -67,6 +90,13 @@ class ComDialog(wx.Dialog):
             self.result_text.SetLabel("No devices found")
 
     def on_connect(self, event):
+        """
+        Event handler for the Connect button.
+
+        Extracts the selected port from the ComboBox,
+        attempts to establish a connection using the Model2450 class,
+        updates the status, and passes the connected device to parent tabs.
+        """
         selection = self.port_text.GetValue()
         if selection:
             # Extract the port from the selection, e.g., "2450 (COM6)" -> "COM6"

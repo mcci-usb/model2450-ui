@@ -18,10 +18,13 @@ from uiGlobal import *
 import devControl
 from model2450lib.serial import searchmodelboot
 from model2450lib.serial import models2450
-
 import serial.tools.list_ports
 import os
 import sys
+
+#======================================================================
+# COMPONENTS
+#======================================================================
 
 ID_TC_GET_VERSION = 1000
 ID_BTN_GET_VERSION = 1001
@@ -59,8 +62,6 @@ CMD_READ_HFUSE = 'N'        # 0x4E      # 'N'
 CMD_READ_EFUSE = 'Q'        # 0x51      # 'Q'
 CMD_LEAVE_PROGMODE = 'L'    # 0x4C
 CMD_EXIT_BOOTLOADER = 'E'   # 0x45
-
-
 CMD_SET_ADDRESS = 0x41     # 'A'
 CMD_WRITE_FLASH = 0x42     # 'B'
 CMD_READ_FLASH = 0x67      # 'g'
@@ -68,14 +69,35 @@ CMD_LEAVE_PROGMODE = 0x4C  # 'C
 
 # class FirmwareUpdate(wx.PyEvent):
 class FirmwareUpdate(wx.PyEvent):
+    """
+    Custom wxPython event for handling firmware update results.
+
+    This event is used to pass data from a worker thread or background process
+    to the main GUI thread, typically to notify the GUI of the result of a 
+    firmware update operation.
+
+    Attributes:
+        data (any): The data associated with the event, such as status,
+                    messages, or results of the firmware update.
+
+    Example usage:
+        evt = FirmwareUpdate(data)
+        wx.PostEvent(target_window, evt)
+    """
     def __init__(self, data):
         
         wx.PyEvent.__init__(self)
         self.SetEventType(EVT_RESULT_ID)
         self.data = data
 
-
 class FirmwarePanel(wx.Panel):
+    """
+    A wx.Panel subclass for managing firmware updates in the GUI.
+
+    This panel provides a user interface for scanning devices, loading firmware
+    files (e.g., .hex), and performing firmware update operations over a serial
+    connection to a Model2450 device.
+    """
     def __init__(self, parent, log_window, device=None):
         super(FirmwarePanel, self).__init__(parent)
         self.SetBackgroundColour("White")
@@ -110,7 +132,7 @@ class FirmwarePanel(wx.Panel):
 
         # --- Top Section: Model Selection ---
         self.szr_top = wx.BoxSizer(wx.HORIZONTAL)
-        self.st_Sw = wx.StaticText(self, -1, "Select Model")
+        self.st_Sw = wx.StaticText(self, -1, "Select Device")
         self.fst_lb = wx.ComboBox(self, size=(110, -1))
         self.btn_scan = wx.Button(self, -1, "Search", size=(77, 25))
         self.szr_top.Add(self.st_Sw, 0, wx.ALL | wx.CENTER, 5)
@@ -191,6 +213,16 @@ class FirmwarePanel(wx.Panel):
         self.update_version()
     
     def ScanDevice(self, evt):
+        """
+        Event handler to initiate a device scan.
+
+        This method posts two `FirmwareUpdate` custom events to trigger actions 
+        such as printing status and searching for available devices. It also 
+        sets the busy cursor to indicate that a background operation is in progress.
+
+        Args:
+            evt (wx.Event): The event object that triggered this handler.
+        """
         wx.PostEvent(self, FirmwareUpdate("print"))
         wx.PostEvent(self, FirmwareUpdate("search"))
         wx.BeginBusyCursor()
@@ -201,10 +233,38 @@ class FirmwarePanel(wx.Panel):
         self.version_text.SetLabel("Version (F:H):    No version")
 
     def SearchTimer(self, evt):
+        """
+        Timer event handler to trigger a device search and stop the timer.
+
+        This method posts a `FirmwareUpdate` event with the "search" command to
+        initiate device scanning, then stops the associated timer to prevent
+        repeated searches.
+
+        Args:
+            evt (wx.TimerEvent): The timer event that triggered this handler.
+        """
         wx.PostEvent(self, FirmwareUpdate("search"))
         self.timer_lp.Stop()
    
     def load_file(self):
+        """
+        Opens a file dialog to select and load a firmware hex file.
+
+        This method prompts the user to select a `.hex` file using a standard file 
+        open dialog. Upon selection, it stores the file path in a text control 
+        (`self.tc_bloc`) and attempts to open the file for reading.
+
+        It initializes several internal variables related to the firmware loading 
+        process (`mappedSw`, `main_flg`, `end_flg`, `finseq`), and reads through 
+        the file line-by-line (currently with a placeholder loop).
+
+        Returns:
+            str: The full path of the selected file if loading is successful,
+                or None if the dialog is cancelled or an error occurs.
+
+        Raises:
+            IOError: Logs an error message if the file cannot be opened.
+        """
         self.dirname=""
         dlg = wx.FileDialog(self, "Load File", self.dirname, "", "*.hex", 
                                 wx.FD_OPEN | wx.FD_FILE_MUST_EXIST)
@@ -227,8 +287,21 @@ class FirmwarePanel(wx.Panel):
             wx.LogError("Can not open file '%s', " % pathname)
         return pathname
     
-    
     def SearchEvent(self, event):
+        """
+        Handles custom FirmwareUpdate events related to device searching.
+
+        Depending on the `data` attribute of the event, this method performs different
+        actions:
+        - If `data` is None, logs a message indicating no search event occurred.
+        - If `data` is "search", disables the scan button temporarily, initiates the
+            boot device search process, processes GUI events to keep UI responsive,
+            and re-enables the scan button with its event handler.
+        - If `data` is "print", logs a message indicating that device search is in progress.
+
+        Args:
+            event (FirmwareUpdate): The custom event carrying a `data` string.
+        """
         if event.data is None:
             print("No Search event\n")
             # self.top.print_on_log("No Search event\n")
@@ -243,6 +316,9 @@ class FirmwarePanel(wx.Panel):
             self.log_window.log_message("\nSearching Devices ...")
     
     def get_boot(self):
+        """
+        Searches for connected bootloader devices and updates the UI list control.
+        """
         b = searchmodelboot.find_switch()
         
         if (wx.IsBusy()):
@@ -251,7 +327,11 @@ class FirmwarePanel(wx.Panel):
         self.fst_lb.Append(b)
         self.fst_lb.SetSelection(0)
             
-    def get_devices(self):    
+    def get_devices(self):
+        """
+        Searches for connected devices and handles the busy cursor state.
+        """
+
         # devlist = get_models()
         devlist = devControl.search_device()
         print("dev :", devlist)
@@ -286,6 +366,7 @@ class FirmwarePanel(wx.Panel):
     
     
     def FwUpdateTimer(self, evt):
+        """Stop timer, perform reset if needed, then restart timer for next step."""
         self.timer_fu.Stop()
         if self.fw_seq == DO_RESET:
             self.sw.do_reset()
@@ -386,6 +467,13 @@ class FirmwarePanel(wx.Panel):
                 self.log_window.log_message(f"Firmware update success!\n")
     
     def parse_set_address(self):
+        """
+        Reads response from AVR device and checks if flash address was set successfully.
+
+        Returns:
+            bool: True if response is carriage return (success), False otherwise,
+                logging an error message in the latter case.
+        """
         resp = self.read_avr_oned()
         if resp == b'\r':
             return True
@@ -394,6 +482,13 @@ class FirmwarePanel(wx.Panel):
             return False
     
     def parse_efuse(self):
+        """
+        Reads the efuse byte from the AVR device and logs its hexadecimal value.
+
+        Returns:
+            bool: True if a response was received and logged successfully,
+                False if no response was received, printing an error message.
+        """
         resp = self.read_avr_ba()
         if resp != None:
             # bsize = resp[0]
@@ -405,6 +500,13 @@ class FirmwarePanel(wx.Panel):
             return False
     
     def parse_hfuse(self):
+        """
+        Reads the hfuse byte from the AVR device and logs its hexadecimal value.
+
+        Returns:
+            bool: True if a response was received and logged successfully,
+                False if no response was received, printing an error message.
+        """
         resp = self.read_avr_ba()
         if resp != None:
             # bsize = resp[0]
@@ -416,6 +518,14 @@ class FirmwarePanel(wx.Panel):
             return False
     
     def parse_lfuse(self):
+        """
+        Reads the lfuse byte from the AVR device, optionally prints a newline if
+        `flash_flg` is set, and logs its hexadecimal value.
+
+        Returns:
+            bool: True if a response was received and logged successfully,
+                False if no response was received, printing an error message.
+        """
         resp = self.read_avr_ba()
         if resp != None:
             # bsize = resp[0]
@@ -429,6 +539,9 @@ class FirmwarePanel(wx.Panel):
             return False
     
     def parse_dev_signature(self):
+        """
+        Reads the device signature bytes from the AVR device and logs the combined signature.
+        """
         resp = self.read_avr_ba()
         if resp != None:
             bsize1 = (format(resp[0], '#x'))
@@ -443,6 +556,9 @@ class FirmwarePanel(wx.Panel):
             return False
     
     def parse_get_progmode(self):
+        """
+        Checks the response from the AVR device to confirm entry into programming mode.
+        """
         resp = self.read_avr_oned()
         if resp == b'\r':
             self.log_window.log_message(f"Enter into Program mode success\n")
@@ -452,6 +568,9 @@ class FirmwarePanel(wx.Panel):
             return False
         
     def parse_dev_type(self):
+        """
+        Checks the response from the AVR device to confirm the selected device code.
+        """
         resp = self.read_avr_oned()
         if resp == b'\r':
             self.log_window.log_message(f"Dev code selected = 0x44\n")
@@ -462,6 +581,13 @@ class FirmwarePanel(wx.Panel):
             return False
     
     def parse_dev_code(self):
+        """
+        Reads the supported device code byte from the programmer and logs it.
+
+        Returns:
+            bool: True if a response was received and logged successfully,
+                False if no response was received, logging an error message.
+        """
         resp = self.read_avr_ba()
         if resp != None:
             # bsize = resp[0]
@@ -473,6 +599,16 @@ class FirmwarePanel(wx.Panel):
             return False
     
     def parse_block_support(self):
+        """
+        Reads block support information from the programmer and logs the buffer size.
+
+        Extracts bytes 1 and 2 from the response as the buffer size in hexadecimal,
+        converts it to an integer, stores it in `self.pageSize`, and logs the buffer size.
+
+        Returns:
+            bool: True if a valid response was received and processed,
+                False if no response was received, logging an error message.
+        """
         resp = self.read_avr_ba()
         if resp != None:
             bsize = resp[1:3]
@@ -485,6 +621,9 @@ class FirmwarePanel(wx.Panel):
             return False
 
     def parse_auto_incr(self):
+        """
+        Checks if the programmer supports auto address increment and logs the result.
+        """
         resp = self.read_avr()
         if resp != None:
             if resp[0] == 'Y':
@@ -497,6 +636,16 @@ class FirmwarePanel(wx.Panel):
             return False
     
     def parse_sw_version(self):
+        """
+        Reads the software version from the device, converts it to a decimal version number, and logs it.
+
+        The response is expected as a hexadecimal string, converted to an integer, then divided by 16 
+        to obtain the version number.
+
+        Returns:
+            bool: True if a valid response was received and logged,
+                False if no response was received, logging an error message.
+        """
         resp = self.read_avr()
         if resp != None:
             resp = int(resp, 16)
@@ -508,6 +657,13 @@ class FirmwarePanel(wx.Panel):
             return False
 
     def parse_programmer_type(self):
+        """
+        Reads the programmer type from the device and logs the result.
+
+        Returns:
+            bool: True if a response was received and logged,
+                False if no response was received, logging an error message.
+        """
         resp = self.read_avr()
         if resp != None:
             self.log_window.log_message(f"Programmer Type:  "+resp+"\n")
@@ -517,6 +673,16 @@ class FirmwarePanel(wx.Panel):
             return False
 
     def parse_sw_identifier(self):
+        """
+        Checks the software identifier from the device to verify firmware update compatibility.
+
+        If the response matches "CATERIN", logs success messages indicating the programmer ID was found.
+        Otherwise, logs an error message with the received identifier.
+
+        Returns:
+            bool: True if the identifier matches "CATERIN",
+                False otherwise, logging an error message.
+        """
         resp = self.read_avr()
         if resp == "CATERIN":
             self.log_window.log_message(f" --------------   Firmware update   ------------------\n")
@@ -527,6 +693,16 @@ class FirmwarePanel(wx.Panel):
             return False
     
     def open_avr_port(self):
+        """
+        Attempts to open a serial connection to the AVR device on the specified port.
+
+        Configures the serial port with 115200 baud rate, 8 data bits, no parity,
+        one stop bit, and a 1-second timeout.
+
+        Returns:
+            bool: True if the port was successfully opened,
+                False if opening failed or an exception occurred (logged accordingly).
+        """
         try:
             self.avrHand = serial.Serial(
                 port=self.fw_port,
@@ -547,67 +723,145 @@ class FirmwarePanel(wx.Panel):
             return False
         
     def get_sw_identifier(self):
+        """
+        Initiates the process to retrieve the software identifier from the AVR device.
+
+        Sets a receive flag, sends the command to get the software identifier,
+        and updates the firmware update sequence state accordingly.
+        """
         self.rx_flg = True
         self.write_avr(CMD_GET_SWIDENTIFIER)
         self.fw_seq = GET_SW_IDENTIFIER
     
     def get_programmer_type(self):
+        """
+        Sends a command to the AVR device to retrieve the programmer type.
+
+        Updates the firmware update sequence state to expect the programmer type response.
+        """
         self.write_avr(CMD_GET_PROGTYPE)
         self.fw_seq = GET_PROG_TYPE
     
     def get_sw_version(self):
+        """
+        Sends a command to the AVR device to request the software version.
+
+        Updates the firmware update sequence state to expect the software version response.
+        """
         self.write_avr(CMD_GET_SWVERSION)
         self.fw_seq = GET_SW_VERSION
     
     def get_dev_code(self):
+        """
+        Sends a command to the AVR device to request the device code.
+
+        Updates the firmware update sequence state to expect the device code response.
+        """
         self.write_avr(CMD_GET_DEVCODE)
         self.fw_seq = GET_DEV_CODE
     
     def check_auto_incr(self):
+        """
+        Sends a command to check if the programmer supports auto address increment.
+
+        Updates the firmware update sequence state to expect the auto increment support response.
+        """
         self.write_avr(CMD_CHECK_AUTOINCR)
         self.fw_seq = CHECK_AUTO_INC
     
     def check_block_support(self):
+        """
+        Sends a command to check if the programmer supports buffered memory access (block support).
+
+        Updates the firmware update sequence state to expect the block support response.
+        """
         self.write_avr(CMD_CHECK_BLOCKSUPP)
         self.fw_seq = CHECK_BLOCK_SUPPORT
     
     def get_dev_code(self):
+        """
+        Sends a command to the AVR device to request the device code.
+
+        Updates the firmware update sequence state to expect the device code response.
+        """
         self.write_avr(CMD_GET_DEVCODE)
         self.fw_seq = GET_DEV_CODE
     
     def select_dev_type(self):
+        """
+        Sends a command to select the device type using a byte array command "TD".
+
+        Updates the firmware update sequence state to expect the device type selection response.
+        """
         self.write_avr_ba("TD")
         self.fw_seq = SELECT_DEV_TYPE
     
     def get_into_progmode(self):
+        """
+        Sends a command to the AVR device to enter programming mode.
+
+        Updates the firmware update sequence state to expect the programming mode entry response.
+        """
         self.write_avr(CMD_GET_PROGMODE)
         self.fw_seq = GET_INTO_PROGMODE
     
     def read_dev_signature(self):
+        """
+        Sends a command to read the device signature from the AVR device.
+
+        Updates the firmware update sequence state to expect the device signature response.
+        """
         self.write_avr(CMD_READ_DEVSIG)
         self.fw_seq = READ_DEV_SIGNATURE
     
     def read_efuse(self):
+        """
+        Sends a command to read the extended fuse byte (efuse) from the AVR device.
+
+        Updates the firmware update sequence state to expect the efuse response.
+        """
         self.write_avr(CMD_READ_EFUSE)
         self.fw_seq = READ_EFUSE
 
     def read_lfuse(self):
+        """
+        Sends a command to read the low fuse byte (lfuse) from the AVR device.
+
+        Updates the firmware update sequence state to expect the lfuse response.
+        """
         self.write_avr(CMD_READ_LFUSE)
         self.fw_seq = READ_LFUSE
 
     def read_hfuse(self):
+        """
+        Sends a command to read the high fuse byte (hfuse) from the AVR device.
+
+        Updates the firmware update sequence state to expect the hfuse response.
+        """
         self.write_avr(CMD_READ_HFUSE)
         self.fw_seq = READ_HFUSE
     
     def exit_boot_loader(self):
+        """
+        Sends the command to exit the bootloader mode on the AVR device.
+
+        Updates the firmware update sequence state to expect the bootloader exit confirmation.
+        """
         self.write_avr('E')
         self.fw_seq = EXIT_BOOTLOADER
     
     def leave_prog_mode(self):
+        """
+        Sends the command to leave programming mode on the AVR device.
+
+        Updates the firmware update sequence state to expect the programming mode exit confirmation.
+        """
         self.write_avr('L')
         self.fw_seq = LEAVE_PROGMODE
     
     def set_address(self):
+        """Send command to set flash memory address on the device."""
+        
         addstr = (self.flash_addr).to_bytes(2, byteorder='big').hex()
         addbyte = bytes.fromhex(addstr)
         mybyte = []
@@ -619,6 +873,8 @@ class FirmwarePanel(wx.Panel):
         self.fw_seq = SET_ADDRESS
     
     def load_block_flash(self):
+        """Send a block of 128 bytes of flash memory data to the device."""
+          
         mybarr = []
         mybarr.append(0x42)
         mybarr.append(0x00)
@@ -634,6 +890,7 @@ class FirmwarePanel(wx.Panel):
         self.fw_seq = WRITE_BLOCK
         
     def read_avr_ba(self):
+        """Read up to 10 bytes from the AVR serial port."""
         rxdata = None
         try:
             rxdata = self.avrHand.read(10)
@@ -642,6 +899,7 @@ class FirmwarePanel(wx.Panel):
         return rxdata
 
     def read_avr_oned(self):
+        """Write a list of bytes to the AVR serial port."""
         rxdata = None
         try:
             rxdata = self.avrHand.read(1)
@@ -651,6 +909,7 @@ class FirmwarePanel(wx.Panel):
         return rxdata
 
     def read_avr(self):
+        """Read a line from the AVR serial port and decode as UTF-8."""
         rxdata = None
         try:
             rxdata = self.avrHand.readline()
@@ -665,6 +924,8 @@ class FirmwarePanel(wx.Panel):
         return rxdata
     
     def write_avr_hba(self,param):
+        """Write a list of bytes to the AVR serial port."""
+        
         ba = bytearray(param)
         try:
             self.avrHand.write(ba)
@@ -672,6 +933,7 @@ class FirmwarePanel(wx.Panel):
             print(serr)
 
     def write_avr_ba(self,param):
+        """Encode and write a string as bytes to the AVR serial port."""
         ba = bytearray(param.encode())
         try:
             self.avrHand.write(ba)
@@ -679,12 +941,14 @@ class FirmwarePanel(wx.Panel):
             print(serr)
 
     def write_avr(self,param):
+        """Write a string command to the AVR serial port."""
         try:
             self.avrHand.write(param.encode())
         except serial.SerialException as serr:
             print(serr)
 
     def get_avrdude(self, plist):
+        """From a list of ports, identify and return the AVR programmer port."""
         for port in plist:
             if sys.platform == "win32": 
                 hwid = port[0]
@@ -698,12 +962,13 @@ class FirmwarePanel(wx.Panel):
 
     # Dummy Event Handlers (You will define them later)
     def updateBatchLocation(self, pathname):
+        """Update the hex file path location."""
         self.hexPath = pathname
         
     def LoadBatch(self, event):
+        """Load a hex file from a file dialog and update batch location."""
         pathname = self.load_file()
         self.updateBatchLocation(pathname)
-
 
     def get_selected_com(self):
         """
@@ -736,6 +1001,7 @@ class FirmwarePanel(wx.Panel):
         return ""
     
     def update_start(self, event):
+        """Start the firmware update process."""
         self.bloc = self.tc_bloc.GetValue()
         if os.path.exists(self.bloc):
             if not self.validate_hex_file(self.bloc):
@@ -789,6 +1055,7 @@ class FirmwarePanel(wx.Panel):
     #     self.timer_fu.Start(500)
         
     def unpack_hex_file(self, hfloc):
+        """Read and unpack Intel HEX file data into memory."""
         lines = tuple(open(hfloc, "r"))
 
         self.mem_flash = {}
@@ -796,6 +1063,7 @@ class FirmwarePanel(wx.Panel):
             self.unpack_line(line)
             
     def unpack_line(self, line):
+        """Parse a single line of Intel HEX and store bytes."""
         if line[0] == ":" and line[-1] == "\n":
             data_len = int(line[1:3], 16)
             addr_hex = int(line[3:7], 16)
@@ -810,6 +1078,7 @@ class FirmwarePanel(wx.Panel):
                     addr_hex += 1
                        
     def validate_hex_file(self, hfloc):
+        """Validate that a file follows the Intel HEX file format."""
         lines = tuple(open(hfloc, "r"))
         status = False
         for line in lines:

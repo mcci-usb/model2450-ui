@@ -4,7 +4,8 @@
 # Module: colorset.py
 #
 # Description:
-#      set the color.
+#     This module implements a wxPython-based GUI frame (ColorSet) that allows
+#     users to set calibration values for red, green, and blue colors.
 #
 # Author:
 #     Vinay N, MCCI Corporation May 2025
@@ -13,19 +14,29 @@
 #     V2.0.0 Mon May 2025 01:00:00   Vinay N 
 #       Module created
 ##############################################################################
-# colorset.py
-
 import wx
-# from model2450lib import model2450
-# from model2450lib import model2450
-
 from uiGlobal import * 
 from pathlib import Path
 import threading
-# import logWindow
+
+#======================================================================
+# COMPONENTS
+#======================================================================
 
 class ColorSet(wx.Frame):
+    """
+    A wx.Frame-based GUI to set calibration values for red, green, and blue
+    on a connected Model2450 device.
+    """
     def __init__(self, parent, log_window, device=None):
+        """
+        Initializes the ColorSet window.
+
+        Args:
+            parent (wx.Window): The parent wx window.
+            log_window (object): A logging window instance with `log_message()` method.
+            device (object, optional): The connected Model2450 device (default: None).
+        """
         super(ColorSet, self).__init__(parent)
         self.device = device
         # self.log_window = log_window
@@ -66,11 +77,19 @@ class ColorSet(wx.Frame):
         self.Bind(wx.EVT_CLOSE, self.OnClose)
     
     def OnClose(self, event):
-        print("close->")
+        """
+        Event handler for closing the window.
+        Cleans up and destroys the frame.
+        """
         self.Destroy()
 
     def OnsetRed(self, e):
-        print("Red --->")
+        """
+        Event handler for the 'Calibration Red' button.
+        Sends a calibration command to the device for the red color.
+
+        Logs the calibration action. Runs device communication in a thread.
+        """
         if self.device is None:
             wx.MessageBox("Please connect to a model first", "Error", wx.OK | wx.ICON_ERROR)
             return
@@ -86,6 +105,12 @@ class ColorSet(wx.Frame):
         threading.Thread(target=task).start()
 
     def OnsetGreen(self, e):
+        """
+        Event handler for the 'Calibration Green' button.
+        Sends a calibration command to the device for the green color.
+
+        Logs the calibration action. Runs device communication in a thread.
+        """
         if self.device is None:
             wx.MessageBox("Please connect to a model first", "Error", wx.OK | wx.ICON_ERROR)
             return
@@ -100,6 +125,12 @@ class ColorSet(wx.Frame):
         threading.Thread(target=task).start()
 
     def OnsetBlue(self, e):
+        """
+        Event handler for the 'Calibration Blue' button.
+        Sends a calibration command to the device for the blue color.
+
+        Logs the calibration action. Runs device communication in a thread.
+        """
         if self.device is None:
             wx.MessageBox("Please connect to a model first", "Error", wx.OK | wx.ICON_ERROR)
             return

@@ -20,19 +20,18 @@ from firmwarewindow import FirmwarePanel
 import logwindow  # Import the logwindow module
 from comdialog import ComDialog  # Import the ComDialog
 from streamplot import StreamPlotFrame  # Import the StreamPlotFrame class
-
 from blockframe import Blockframe
-
 from uiGlobal import * 
-
 from aboutDialog import *
 import webbrowser
-
 from colorset import ColorSet
 
-
+#======================================================================
+# COMPONENTS
+#======================================================================
 class MainFrame(wx.Frame):
     def __init__(self, parent):
+        """Initialize the main application frame, menus, tabs, and log window."""
         super().__init__(None, title="MCCI Model2450 UI - Version 2.0.0", size=(600, 700))
         
         self.SetIcon(wx.Icon(os.path.join(os.path.abspath(os.path.dirname(__file__)), "icons", IMG_ICON)))
@@ -110,7 +109,7 @@ class MainFrame(wx.Frame):
 
         # Append menus to the menu bar
         self.menu_bar.Append(self.file_menu, "File")
-        self.menu_bar.Append(self.model_menu, "Select Model")
+        self.menu_bar.Append(self.model_menu, "Select Device")
         self.menu_bar.Append(self.config_menu, "Configure")
         self.menu_bar.Append(self.help_menu, "Help")
 
@@ -140,18 +139,20 @@ class MainFrame(wx.Frame):
         self.Centre()
 
     def on_stream_plot(self, event):
+        """Launch the StreamPlotFrame for real-time plotting."""
         device = self.control_tab.device
         stream_plot_frame = StreamPlotFrame(parent=None, device=device)
         
         stream_plot_frame.Show()
 
-
     def OnsetColor(self, e):
+        """Launch the ColorSet calibration window."""
         device = self.control_tab.device
         color_set_frame = ColorSet(parent=None, log_window=self.logPan, device=device)
         color_set_frame.Show()
     
     def OnsetBlockframe(self, e):
+        """Launch the Blockframe scanning window."""
         device = self.control_tab.device
         color_set_frame = Blockframe(parent=None, log_window=self.logPan, device=device)
         color_set_frame.Show()
@@ -162,6 +163,7 @@ class MainFrame(wx.Frame):
 
 
     def on_select(self, event):
+        """Show COM dialog to select and connect a device."""
         dialog = ComDialog(self)
         if dialog.ShowModal() == wx.ID_OK:
             device = dialog.device
@@ -169,6 +171,7 @@ class MainFrame(wx.Frame):
         dialog.Destroy()
     
     def on_disconnect(self, event):
+        """Handle disconnecting the currently connected device."""
         if self.control_tab.device is not None:
             try:
                 self.control_tab.device.disconnect()  # Disconnect device
@@ -182,13 +185,13 @@ class MainFrame(wx.Frame):
             wx.MessageBox("No device is currently connected.", "Info", wx.OK | wx.ICON_INFORMATION)
 
     def OnAboutWindow(self, event):
-        
+        """Show the About dialog."""
         dlg = AboutDialog(self, self)
         dlg.ShowModal()
         dlg.Destroy()
         
     def OnClickHelp(self, event):
-        
+        """Open appropriate help URLs based on menu item selection."""
         id = event.GetId()
         if (id == ID_MENU_HELP_2450):
             webbrowser.open("https://store.mcci.com/products/model-2450-brightness-and-color-kit",
@@ -204,13 +207,12 @@ class MainFrame(wx.Frame):
         elif(id == ID_MENU_HELP_ABOUT):
             self.OnAboutWindow(event)
 
-
 class MyApp(wx.App):
+    """Application initialization — creates and shows the main window."""
     def OnInit(self):
         frame = MainFrame(parent=None)
         frame.Show()
         return True
-
 
 if __name__ == "__main__":
     app = MyApp(False)
