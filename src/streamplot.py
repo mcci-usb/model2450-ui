@@ -1,18 +1,3 @@
-##############################################################################
-# 
-# Module: streamplot.py
-#
-# Description:
-#     plotting the stream 3\r\n data(both RGB and Light values).
-#
-# Author:
-#     Vinay N, MCCI Corporation Aug 2024
-#
-# Revision history:
-#     V1.0.0 Mon Aug 12 2024 01:00:00   Vinay N 
-#       Module created
-
-##############################################################################
 import wx
 import serial
 import threading
@@ -20,10 +5,14 @@ from uiGlobal import *
 import matplotlib
 import time
 from model2450lib import model2450
+import os
+
 matplotlib.use('WXAgg')
 from matplotlib.figure import Figure
 from matplotlib.backends.backend_wxagg import FigureCanvasWxAgg as FigureCanvas
-
+from matplotlib import gridspec
+import math
+from matplotlib.ticker import AutoMinorLocator
 #======================================================================
 # COMPONENTS
 #======================================================================
@@ -67,36 +56,15 @@ def read_packet_from_serial(ser):
     return header + payload
 
 class StreamPlotFrame(wx.Frame):
-    """
-    A wx.Frame subclass that streams and plots RGB and light sensor data from a connected device.
-
-    This GUI interface is designed to:
-    - Connect to a Model2450 device over serial.
-    - Start and stop data streaming.
-    - Plot RGB (Red, Green, Blue) and ambient light values in real time using matplotlib.
-    - Support zooming and reviewing historical data via a slider after streaming stops.
-    - Allow toggling visibility of each data channel (RGB/Light) via checkboxes.
-
-    Attributes:
-        device: The Model2450 device object (must expose a .ser Serial connection).
-        start_time: Timestamp when the stream frame was initialized (used for time axis).
-        keep_running: A boolean flag for controlling the serial reading thread.
-        data_lock: A threading lock to protect access to shared data buffers.
-        timer: A wx.Timer used to trigger periodic plot updates.
-        serial_thread: Background thread for reading packets from the serial port.
-
-    Note:
-        This class expects a specific data format from the device, decoded with a custom protocol.
-    """
+    
     def __init__(self, parent, device=None):
         super(StreamPlotFrame, self).__init__(parent)
         self.SetIcon(wx.Icon(os.path.join(os.path.abspath(os.path.dirname(__file__)), "icons", IMG_ICON)))
         self.device = device
         self.start_time = time.time()
 
-
         self.SetTitle("RGB and Light Value Plot")
-        self.SetSize((800, 700))
+        self.SetSize((1200, 800))
         panel = wx.Panel(self)
 
         self.red_cb = wx.CheckBox(panel, label="Red")
@@ -111,8 +79,14 @@ class StreamPlotFrame(wx.Frame):
         self.zoom_in_btn = wx.Button(panel, label="Zoom In")
         self.zoom_out_btn = wx.Button(panel, label="Zoom Out")
         
-        self.slider = wx.Slider(panel, value=0, minValue=0, maxValue=1, style=wx.SL_HORIZONTAL | wx.SL_LABELS,size=(300, -1))
-        
+        self.slider = wx.Slider(panel, value=0, minValue=0, maxValue=1, style=wx.SL_HORIZONTAL | wx.SL_LABELS, size=(300, -1))
+
+        # Cursor position label to show mouse coordinates on plot
+        self.cursor_text = wx.StaticText(panel, label="Cursor: ")
+        # Set bold font
+        font = self.cursor_text.GetFont()
+        font.SetWeight(wx.FONTWEIGHT_BOLD)
+        self.cursor_text.SetFont(font)
 
         cb_sizer = wx.BoxSizer(wx.HORIZONTAL)
         for cb in [self.red_cb, self.green_cb, self.blue_cb, self.light_cb]:
@@ -122,16 +96,24 @@ class StreamPlotFrame(wx.Frame):
         for btn in [self.start_btn, self.stop_btn, self.zoom_in_btn, self.zoom_out_btn, self.slider]:
             btn_sizer.Add(btn, 0, wx.ALL, 5)
 
+        # Add cursor_text label after buttons in btn_sizer
+        btn_sizer.Add(self.cursor_text, 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT, 20)
+
         self.figure = Figure(facecolor='black')
-        self.ax_rgb = self.figure.add_subplot(211)
-        self.ax_light = self.figure.add_subplot(212)
         
-        # Ensure initial background is black
+        gs = self.figure.add_gridspec(3, 1, height_ratios=[1, 0.2, 2])
+        self.ax_rgb = self.figure.add_subplot(gs[0, 0])
+        # gs[1, 0] is left empty as a gap
+        self.ax_light = self.figure.add_subplot(gs[2, 0])
+        self.figure.subplots_adjust(hspace=0)  # set hspace to 0 since height_ratios control spacing
+
+        
         self.ax_rgb.set_facecolor('black')
         self.ax_light.set_facecolor('black')
         
-        self.figure.subplots_adjust(hspace=0.5)
+        self.figure.subplots_adjust(hspace=0.3)
         self.canvas = FigureCanvas(panel, -1, self.figure)
+        self.canvas.mpl_connect("motion_notify_event", self.on_mouse_move)
 
         self.slider.Disable()  # Disabled initially
         self.slider.Bind(wx.EVT_SLIDER, self.on_slider_scroll)
@@ -140,10 +122,8 @@ class StreamPlotFrame(wx.Frame):
         plot_sizer.Add(cb_sizer, 0, wx.CENTER)
         plot_sizer.Add(self.canvas, 1, wx.EXPAND | wx.ALL, 5)
         plot_sizer.Add(btn_sizer, 0, wx.CENTER)
-        # plot_sizer.Add(self.slider, 0, wx.EXPAND | wx.ALL, 5)
 
         main_sizer = wx.BoxSizer(wx.VERTICAL)
-        # main_sizer.Add(serial_sizer, 0, wx.ALL, 5)
         main_sizer.Add(plot_sizer, 1, wx.EXPAND)
         panel.SetSizer(main_sizer)
 
@@ -169,20 +149,6 @@ class StreamPlotFrame(wx.Frame):
         self.data_lock = threading.Lock()
 
     def start_stream(self, event):
-        """
-        Starts the data stream from the connected device.
-
-        This method:
-        - Sends a stream command to the device over serial to begin streaming data.
-        - Spawns a background thread to continuously read and decode incoming packets.
-        - Disables the timeline slider during active streaming to prevent manual scrolling.
-
-        Args:
-            event: The wxPython event that triggered this method (e.g., button press).
-
-        Raises:
-            Displays a message box on failure if the serial write or thread creation fails.
-        """
         if not self.keep_running:
             if self.device:
                 try:
@@ -198,17 +164,6 @@ class StreamPlotFrame(wx.Frame):
                 print("Device is None")
 
     def stop_stream(self, event):
-        """
-        Stops the ongoing data stream from the device.
-
-        This method:
-        - Sends a command to the device to stop streaming.
-        - Sets the `keep_running` flag to False to stop the reading thread.
-        - Updates and enables the timeline slider for reviewing the collected data after streaming stops.
-
-        Args:
-            event: The wxPython event that triggered this method (e.g., button press).
-        """
         self.keep_running = False
         if self.ser:
             self.ser.write(b"stream 0\r\n")
@@ -219,29 +174,13 @@ class StreamPlotFrame(wx.Frame):
         if length:
             self.slider.SetMin(0)
             self.slider.SetMax(length - 1)
-            # self.slider.SetValue(length - 1)
             self.slider.SetValue(0)
             self.slider.Enable()
 
     def scale_rgb_value(self, value):
-        """
-        Clamps an RGB value to the valid range [0, 255].
-
-        Args:
-            value (int): The raw RGB value.
-
-        Returns:
-            int: A value between 0 and 255 inclusive.
-        """
         return max(0, min(255, value))
-
+    
     def read_serial_data(self):
-        """
-        Continuously reads data packets from the serial device while streaming is active.
-
-        Decodes each packet, extracts RGB or light values, and appends them to corresponding data lists.
-        Uses a buffer to accumulate and split incoming serial data lines.
-        """
         buffer = b""
         while self.keep_running:
             packet = read_packet_from_serial(self.ser)
@@ -264,29 +203,19 @@ class StreamPlotFrame(wx.Frame):
                                     self.r_data.append(r)
                                     self.g_data.append(g)
                                     self.b_data.append(b)
-                                    # self.time_data_rgb.append(time.time())
                                     self.time_data_rgb.append(time.time() - self.start_time)
                         else:
                             try:
                                 light = int(decoded_str)
                                 with self.data_lock:
                                     self.light_data.append(light)
-                                    # self.time_data_light.append(time.time())
                                     self.time_data_light.append(time.time() - self.start_time)
                             except ValueError:
-                                # Not a valid light integer, ignore
                                 pass
             except Exception as e:
                 print(f"Error reading serial: {e}")
 
     def update_plot(self, event):
-        """
-        Updates the RGB and Light plots with current data.
-
-        Uses a lock to safely copy data for plotting. Handles live updates during streaming
-        and uses the slider position for navigating through data after streaming has stopped.
-        Applies zoom scaling to control how many data points are displayed.
-        """
         with self.data_lock:
             r_data = self.r_data[:]
             g_data = self.g_data[:]
@@ -301,12 +230,20 @@ class StreamPlotFrame(wx.Frame):
 
         self.ax_rgb.clear()
         self.ax_light.clear()
+        
+        # Set axis labels here
+        self.ax_rgb.set_ylabel("R:G:B value", color='white')
+        self.ax_rgb.set_xlabel("Time (s)", color='white')
+
+        self.ax_light.set_ylabel("Light Value", color='white')
+        self.ax_light.set_xlabel("Time (s)", color='white')
+        
         for ax in [self.ax_rgb, self.ax_light]:
             ax.set_facecolor('black')
             ax.tick_params(axis='x', colors='white')
             ax.tick_params(axis='y', colors='white')
+            # ax.grid(True, color='gray', linestyle='--', linewidth=0.5)  # <-- Add this line
 
-        # Determine how many points to show based on zoom
         n_rgb = int(100 * self.zoom_scale)
         n_light = int(100 * self.zoom_scale)
 
@@ -321,7 +258,6 @@ class StreamPlotFrame(wx.Frame):
             start_index_rgb = max(0, min(slider_pos, max(0, total_points_rgb - n_rgb)))
             start_index_light = max(0, min(slider_pos, max(0, total_points_light - n_light)))
             start_index_rgb = slider_pos
-            # start_index_light = slider_pos
 
         end_index_rgb = min(start_index_rgb + n_rgb, total_points_rgb)
         end_index_light = min(start_index_light + n_light, total_points_light)
@@ -340,20 +276,34 @@ class StreamPlotFrame(wx.Frame):
             self.ax_rgb.plot(time_slice_rgb, g_slice, color='green', label='Green')
         if self.blue_cb.GetValue() and b_slice:
             self.ax_rgb.plot(time_slice_rgb, b_slice, color='blue', label='Blue')
-        # self.ax_rgb.set_title("R:G:B", color='white')
-        # self.ax_rgb.legend()
+
         self.ax_rgb.set_title("R:G:B", color='white')
         if self.ax_rgb.lines:
             self.ax_rgb.legend()
-
+        
         if self.light_cb.GetValue() and light_slice:
             self.ax_light.plot(time_slice_light, light_slice, color='yellow', label='Light')
-            light_min = min(light_slice)
-            light_max = max(light_slice)
-            padding = (light_max - light_min) * 0.1
-            self.ax_light.set_ylim(light_min - padding, light_max + padding)
-            # self.ax_light.set_title("Light", color='white')
-            # self.ax_light.legend()
+
+            max_light = max(light_slice)
+
+            base_ylim = 800000
+            step = 200000
+
+            if max_light > base_ylim:
+                ylim_max = ((max_light // step) + 1) * step
+            else:
+                ylim_max = base_ylim
+
+            self.ax_light.set_ylim(0, ylim_max)
+            ticks = list(range(0, ylim_max + step, step))
+            self.ax_light.set_yticks(ticks)
+
+            from matplotlib.ticker import FuncFormatter
+            def no_scientific(x, pos):
+                return f"{int(x):,}"  # Adds commas, no scientific notation
+
+            self.ax_light.yaxis.set_major_formatter(FuncFormatter(no_scientific))
+
             self.ax_light.set_title("Light", color='white')
             if self.ax_light.lines:
                 self.ax_light.legend()
@@ -361,38 +311,16 @@ class StreamPlotFrame(wx.Frame):
         self.canvas.draw()
 
     def on_slider_scroll(self, event):
-        """
-        Handles slider movement events.
-
-        When streaming is stopped, allows users to scroll through and view recorded data
-        by updating the plot based on the slider's position.
-        """
         if not self.keep_running:
             self.update_plot(None)
 
     def zoom_in(self, event):
-        """
-        Zooms into the plot by decreasing the zoom scale.
-
-        Limits the zoom level to a minimum of 0.5x to prevent excessive zooming in.
-        """
         self.zoom_scale = max(0.5, self.zoom_scale * 0.8)
 
     def zoom_out(self, event):
-        """
-        Zooms out of the plot by increasing the zoom scale.
-
-        Limits the zoom level to a maximum of 5.0x to prevent excessive zooming out.
-        """
         self.zoom_scale = min(5.0, self.zoom_scale * 1.2)
 
     def OnClose(self, event):
-        """
-        Handles the window close event.
-
-        Stops the data stream, closes the serial connection, waits for the
-        serial thread to finish, and then destroys the frame.
-        """
         self.keep_running = False
         if self.ser:
             try:
@@ -404,11 +332,33 @@ class StreamPlotFrame(wx.Frame):
             self.serial_thread.join(timeout=2)
         self.Destroy()
     
-    def set_device(self, device):
-        """
-        Assigns the specified device object to the panel.
+    def on_mouse_move(self, event):
+        if not event.inaxes or event.xdata is None:
+            self.cursor_text.SetLabel("Cursor: ")
+            return
 
-        Parameters:
-            device: A device object that provides access to a serial interface.
-        """
-        self.device = device
+        x = event.xdata
+
+        with self.data_lock:
+            if event.inaxes == self.ax_rgb:
+                # Find nearest time index for RGB
+                if self.time_data_rgb:
+                    time_array = self.time_data_rgb
+                    idx = min(range(len(time_array)), key=lambda i: abs(time_array[i] - x))
+                    r = self.r_data[idx] if idx < len(self.r_data) else 0
+                    g = self.g_data[idx] if idx < len(self.g_data) else 0
+                    b = self.b_data[idx] if idx < len(self.b_data) else 0
+                    self.cursor_text.SetLabel(f"Cursor: Time={x:.2f} | R={r}, G={g}, B={b}")
+                else:
+                    self.cursor_text.SetLabel("Cursor: No RGB data")
+
+            elif event.inaxes == self.ax_light:
+                # Find nearest time index for Light
+                if self.time_data_light:
+                    time_array = self.time_data_light
+                    idx = min(range(len(time_array)), key=lambda i: abs(time_array[i] - x))
+                    light = self.light_data[idx] if idx < len(self.light_data) else 0
+                    self.cursor_text.SetLabel(f"Cursor: Time={x:.2f} | Light={light}")
+                else:
+                    self.cursor_text.SetLabel("Cursor: No Light data")
+    
