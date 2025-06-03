@@ -77,7 +77,17 @@ the Model 2450 allows you to test the Brightness and color of video displays on 
 
 ![Model2450BACK](assets/Model2450.png)
 
+### Model2450UI Demo
+
+![Model2450BACKDEMO](assets/Model2450-UI-gif.gif)
+
 ## Release History
+
+- v2.0.0
+
+    - Added Stream plot enhancement in UI.
+    - Added CSV download (both RGB and Light values).
+    - Added packetaziation format decoding library.
 
 - v1.0.0 initial release of Model 2450 UI.
 
