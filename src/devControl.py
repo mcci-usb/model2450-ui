@@ -15,9 +15,11 @@
 #       Module created
 ##############################################################################
 
-# from model2450lib import searchmodel
 from model2450lib import searchmodel
 from uiGlobal import *
+#======================================================================
+# COMPONENTS
+#======================================================================
 
 def firmware_version():
     # dev_ver =
@@ -49,6 +51,9 @@ def get_avail_ports(top):
     return dev_list
 
 def get_dev_baud(devname):
+    """
+    Get the baudrate.
+    """
     devidx = None
     for i in range(len(DEVICES)):
         if devname == DEVICES[i]:
@@ -56,12 +61,3 @@ def get_dev_baud(devname):
             devidx = i
             break
     return devidx
-
-def connect_device(swdict):
-    """
-    Connect the device.
-    """
-    print("connect-device:", swdict)
-
-def disconnect_device(self):
-    pass
