@@ -20,6 +20,9 @@ import numpy as np
 import csv
 import os
 from wx import FileDialog, FD_SAVE, FD_OVERWRITE_PROMPT
+from uiGlobal import *
+from datetime import datetime
+import xlsxwriter
 
 #======================================================================
 # COMPONENTS
@@ -40,6 +43,8 @@ class PlotPanel(wx.Panel):
     """
     def __init__(self, parent, rgb_data):
         wx.Panel.__init__(self, parent, size=wx.Size(400, 400))
+        
+        # Add icon to the plot window frame
         self.rgb_data = rgb_data
         self.figure, self.ax = plt.subplots(dpi=80)
         self.ax2 = self.ax.twinx()
@@ -71,10 +76,11 @@ class PlotPanel(wx.Panel):
         layout = wx.BoxSizer(wx.VERTICAL)
         control_sizer = wx.BoxSizer(wx.HORIZONTAL)
 
+        control_sizer.Add(self.checkbox_light, 0, wx.ALL, 5)
         control_sizer.Add(self.checkbox_red, 0, wx.ALL, 5)
         control_sizer.Add(self.checkbox_green, 0, wx.ALL, 5)
         control_sizer.Add(self.checkbox_blue, 0, wx.ALL, 5)
-        control_sizer.Add(self.checkbox_light, 0, wx.ALL, 5)
+        
         control_sizer.Add(self.zoom_in_btn, 0, wx.ALL, 5)
         control_sizer.Add(self.zoom_out_btn, 0, wx.ALL, 5)
 
@@ -174,6 +180,7 @@ class ControlPanel(wx.Panel):
         """
         super().__init__(parent)
         
+        self.timestamps = []
         self.log_window = log_window
         self.device = device
         self.rgb_data = {"R": [], "G": [], "B": [], "Light": []}
@@ -186,7 +193,7 @@ class ControlPanel(wx.Panel):
         # Light control
         self.light = wx.BoxSizer(wx.HORIZONTAL)
         self.st_light = wx.StaticText(self, label="Light")
-        self.tc_light = wx.TextCtrl(self, value="00000", size=(85, 25), style=wx.TE_CENTER | wx.TE_PROCESS_ENTER)
+        self.tc_light = wx.TextCtrl(self, value="00000", size=(85, 25), style=wx.TE_CENTER | wx.TE_READONLY)
         self.st_msr = wx.StaticText(self, label="lux")
         self.btn_light = wx.Button(self, label="Read Light")
 
@@ -200,7 +207,7 @@ class ControlPanel(wx.Panel):
         # Color control
         self.color = wx.BoxSizer(wx.HORIZONTAL)
         self.st_color = wx.StaticText(self, label="Color (R:G:B)")
-        self.tc_color = wx.TextCtrl(self, value="R:G:B", size=(85, 25), style=wx.TE_CENTER | wx.TE_PROCESS_ENTER)
+        self.tc_color = wx.TextCtrl(self, value="R:G:B", size=(85, 25), style=wx.TE_CENTER | wx.TE_READONLY)
         self.btn_color = wx.Button(self, label="Read Color")
 
         self.color.Add(self.st_color, flag=wx.ALL, border=10)
@@ -214,6 +221,7 @@ class ControlPanel(wx.Panel):
         self.settime = wx.BoxSizer(wx.HORIZONTAL)
         self.st_setint = wx.StaticText(self, label="Interval")
         self.tc_setint = wx.TextCtrl(self, value="2000", size=(85, 25), style=wx.TE_CENTER | wx.TE_PROCESS_ENTER)
+        self.tc_setint.Bind(wx.EVT_CHAR, self.on_only_digits)
         self.st_ms = wx.StaticText(self, label="ms")
 
         self.settime.Add(self.st_setint, flag=wx.ALL, border=10)
@@ -225,18 +233,28 @@ class ControlPanel(wx.Panel):
         # Buttons
         self.start_sizer = wx.BoxSizer(wx.HORIZONTAL)
         self.start_btn = wx.Button(self, label="Start", size=(70, 25))
-        self.plot_btn = wx.Button(self, label="Plot", size=(70, 25))
         self.stop_btn = wx.Button(self, label="Stop", size=(70, 25))
-        self.save_csv_btn = wx.Button(self, label="Save CSV", size=(80, 25))
+        
+        
 
 
         self.start_sizer.Add((90, 0))
         self.start_sizer.AddSpacer(8)  # This will add the 20px gap
         self.start_sizer.Add(self.start_btn, flag=wx.ALL, border=10)
-        self.start_sizer.Add(self.plot_btn, flag=wx.ALL, border=10)
+        # self.start_sizer.Add(self.plot_btn, flag=wx.ALL, border=10)
         self.start_sizer.Add(self.stop_btn, flag=wx.ALL, border=10)
-        self.start_sizer.Add(self.save_csv_btn, flag=wx.ALL, border=10)
+        # self.start_sizer.Add(self.save_csv_btn, flag=wx.ALL, border=10)
         self.main_sizer.Add(self.start_sizer, flag=wx.EXPAND)
+        
+        self.plot_csv = wx.BoxSizer(wx.HORIZONTAL)
+        self.plot_btn = wx.Button(self, label="Plot", size=(70, 25))
+        self.save_csv_btn = wx.Button(self, label="Save File", size=(80, 25))
+        self.plot_csv.Add((100, 0))
+        self.plot_csv.Add(self.plot_btn, flag=wx.ALL, border=10)
+        self.plot_csv.Add(self.save_csv_btn, flag=wx.ALL, border=10)
+        self.main_sizer.Add(self.plot_csv, flag=wx.EXPAND)
+        
+        
 
         self.SetSizer(self.main_sizer)
 
@@ -258,6 +276,20 @@ class ControlPanel(wx.Panel):
         """
         self.device = device
     
+    def on_only_digits(self, event):
+        keycode = event.GetKeyCode()
+        if keycode < wx.WXK_SPACE or keycode == wx.WXK_DELETE or keycode > 255:
+            event.Skip()
+            return
+        char = chr(keycode)
+        if char.isdigit():
+            event.Skip()  # Allow digit
+        # Optional: allow backspace
+        elif keycode == wx.WXK_BACK:
+            event.Skip()
+        else:
+            return  # Ignore non-digit key
+    
     def on_light_read(self, event):
         """
         Handle the "Read Light" button press.
@@ -275,45 +307,17 @@ class ControlPanel(wx.Panel):
 
                 light = self.device.get_read()
                 self.tc_light.SetValue(str(light))
-                self.log_window.log_message(f"Read the ambient light sensor: {light}\n")
+                self.log_window.log_message(f"Light (lux) -  {light}")
 
             except Exception as e:
                 self.tc_light.SetValue("Read error")
                 self.log_window.log_message(f"Error reading light sensor: {e}\n")
         else:
-            self.tc_light.SetValue("Device not connected")
-            self.log_window.log_message("No device connected for light read.\n")
-
-    def on_save_csv(self, event):
-        """
-        Save the collected RGB and light sensor data to a CSV file.
-
-        Opens a file dialog for selecting the save location and writes the data in tabular form.
-        """
-        with FileDialog(self, "Save CSV", wildcard="CSV files (*.csv)|*.csv",
-                        style=FD_SAVE | FD_OVERWRITE_PROMPT) as fileDialog:
-            if fileDialog.ShowModal() == wx.ID_CANCEL:
-                return     # user cancelled
-
-            path = fileDialog.GetPath()
-            try:
-                r = self.rgb_data.get("R", [])
-                g = self.rgb_data.get("G", [])
-                b = self.rgb_data.get("B", [])
-                light = self.rgb_data.get("Light", [])
-                min_len = min(len(r), len(g), len(b), len(light))
-
-                with open(path, 'w', newline='') as csvfile:
-                    writer = csv.writer(csvfile)
-                    writer.writerow(['Time Index', 'Red', 'Green', 'Blue', 'Light'])
-
-                    for i in range(min_len):
-                        writer.writerow([i, r[i], g[i], b[i], light[i]])
-
-                self.log_window.log_message(f"\nSaved RGB and Light data to: {path}")
-
-            except IOError as e:
-                self.log_window.log_message(f"\nFailed to save file: {e}")
+            wx.MessageBox(
+                "No device is connected. Please connect a Model2450 device first.",
+                "Device Not Connected",
+                wx.OK | wx.ICON_WARNING
+            )
 
     def on_color_read(self, event):
         """
@@ -326,11 +330,15 @@ class ControlPanel(wx.Panel):
             try:
                 color = self.device.get_color()
                 self.tc_color.SetValue(str(color))
-                self.log_window.log_message(f"Displaying the color reading: {color}\n")
+                self.log_window.log_message(f"Color (R:G:B) - {color}")
             except Exception as e:
                 self.tc_color.SetValue(f"Error: {str(e)}")
         else:
-            self.tc_color.SetValue("Device not connected")
+            wx.MessageBox(
+                "No device is connected. Please connect a Model2450 device first.",
+                "Device Not Connected",
+                wx.OK | wx.ICON_WARNING
+            )
 
     def on_start(self, event):
         """
@@ -338,9 +346,16 @@ class ControlPanel(wx.Panel):
 
         Uses the interval specified in the interval text control.
         """
-        interval_ms = int(self.tc_setint.GetValue())
-        self.timer.Start(interval_ms)
-        self.log_window.log_message("\nStarted reading data periodically.")
+        if self.device:
+            try:
+                interval_ms = int(self.tc_setint.GetValue())
+                self.timer.Start(interval_ms)
+                # self.log_window.log_message("\nStarted reading data periodically.")
+                self.log_window.log_message(f"\nAmbient Light (lux) and Color (R:G:B) data read {interval_ms} ms.")
+            except Exception as e:
+                self.tc_color.SetValue(f"Error: {str(e)}")
+        else:
+            self.log_window.log_message(f"Device is not Connected!")
 
     def on_stop(self, event):
         """
@@ -368,11 +383,16 @@ class ControlPanel(wx.Panel):
                 self.rgb_data["R"].append(r)
                 self.rgb_data["G"].append(g)
                 self.rgb_data["B"].append(b)
+                
+                # self.timestamps.append(datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3])
+                timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]  # accurate to milliseconds
+                self.timestamps.append(timestamp)
 
                 self.tc_light.SetValue(str(light))
                 self.tc_color.SetValue(color)
 
-                self.log_window.log_message(f"\nTimer read: Light={light}, Color={color}")
+                # self.log_window.log_message(f"\nTimer read: Light={light}, Color={color}")
+                self.log_window.log_message(f"Ambient Light (lux) - {light} ,   Color (R:G:B) - {color}")
 
             except Exception as e:
                 self.log_window.log_message(f"\nError during timer read: {str(e)}")
@@ -385,5 +405,335 @@ class ControlPanel(wx.Panel):
         """
         if self.plot_window is None or not self.plot_window.IsShown():
             self.plot_window = wx.Frame(self, title="RGB and Light Plot", size=(600, 500))
+            
+            icon_path = os.path.join(os.path.abspath(os.path.dirname(__file__)), "icons", IMG_ICON)
+            self.plot_window.SetIcon(wx.Icon(icon_path))
             panel = PlotPanel(self.plot_window, self.rgb_data)
             self.plot_window.Show()
+    
+    def on_save_csv(self, event):
+        """
+        Ask the user to choose file format (.xlsx or .csv) and save RGB/Light data.
+        Excel: writes data in one sheet, and shows charts only in second sheet.
+        """
+        # import xlsxwriter
+
+        # Ask user for file format
+        format_dialog = wx.SingleChoiceDialog(
+            self,
+            "Choose a file format to save:",
+            "Save As",
+            ["XLSX (Excel)", "CSV"]
+        )
+
+        if format_dialog.ShowModal() != wx.ID_OK:
+            return  # User cancelled
+
+        file_type = format_dialog.GetStringSelection()
+        wildcard = "Excel files (*.xlsx)|*.xlsx" if "XLSX" in file_type else "CSV files (*.csv)|*.csv"
+
+        with FileDialog(self, "Save File", wildcard=wildcard,
+                        style=FD_SAVE | FD_OVERWRITE_PROMPT) as fileDialog:
+            if fileDialog.ShowModal() == wx.ID_CANCEL:
+                return  # User cancelled
+
+            path = fileDialog.GetPath()
+            r = self.rgb_data.get("R", [])
+            g = self.rgb_data.get("G", [])
+            b = self.rgb_data.get("B", [])
+            light = self.rgb_data.get("Light", [])
+            timestamps = getattr(self, "timestamps", [])
+
+            min_len = min(len(r), len(g), len(b), len(light), len(timestamps))
+
+            try:
+                if "XLSX" in file_type:
+                    if not path.endswith(".xlsx"):
+                        path += ".xlsx"
+                    workbook = xlsxwriter.Workbook(path)
+
+                    # Sheet 1: RGB and Light Data
+                    sheet_data = workbook.add_worksheet("RGB and Light Data")
+                    # Sheet 2: Charts Only
+                    sheet_plot = workbook.add_worksheet("Plotting")
+
+                    header_format = workbook.add_format({'bold': True, 'align': 'center', 'valign': 'vcenter'})
+                    center_format = workbook.add_format({'align': 'center', 'valign': 'vcenter'})
+
+                    headers = ['Index', 'Timestamp', 'Light', 'Red', 'Green', 'Blue']
+                    for col, header in enumerate(headers):
+                        sheet_data.write(0, col, header, header_format)
+
+                    for i in range(min_len):
+                        row = [i, timestamps[i], light[i], r[i], g[i], b[i]]
+                        for col, value in enumerate(row):
+                            sheet_data.write(i + 1, col, value, center_format)
+
+                    # Column widths
+                    sheet_data.set_column('A:A', 8)
+                    sheet_data.set_column('B:B', 23)
+                    sheet_data.set_column('C:F', 10)
+
+                    # ---------------------- Charts ----------------------
+
+                    # Light Chart (only from Sheet 1)
+                    light_chart = workbook.add_chart({'type': 'line'})
+                    light_chart.add_series({
+                        'name': 'Light',
+                        'categories': ['RGB and Light Data', 1, 0, min_len, 0],  # Index
+                        'values':     ['RGB and Light Data', 1, 2, min_len, 2],  # Light
+                        'line': {'color': 'orange'}
+                    })
+                    light_chart.set_title({'name': 'Ambient Light Sensor Data'})
+                    light_chart.set_x_axis({'name': 'Index'})
+                    light_chart.set_y_axis({'name': 'Light (lux)'})
+                    light_chart.set_legend({'position': 'bottom'})
+                    sheet_plot.insert_chart('B2', light_chart, {'x_scale': 2.0, 'y_scale': 1.2})
+
+                    # RGB Chart
+                    rgb_chart = workbook.add_chart({'type': 'line'})
+                    rgb_chart.add_series({
+                        'name': 'Red',
+                        'categories': ['RGB and Light Data', 1, 0, min_len, 0],
+                        'values':     ['RGB and Light Data', 1, 3, min_len, 3],
+                        'line': {'color': 'red'}
+                    })
+                    rgb_chart.add_series({
+                        'name': 'Green',
+                        'categories': ['RGB and Light Data', 1, 0, min_len, 0],
+                        'values':     ['RGB and Light Data', 1, 4, min_len, 4],
+                        'line': {'color': 'green'}
+                    })
+                    rgb_chart.add_series({
+                        'name': 'Blue',
+                        'categories': ['RGB and Light Data', 1, 0, min_len, 0],
+                        'values':     ['RGB and Light Data', 1, 5, min_len, 5],
+                        'line': {'color': 'blue'}
+                    })
+                    rgb_chart.set_title({'name': 'RGB Sensor Data'})
+                    rgb_chart.set_x_axis({'name': 'Index'})
+                    rgb_chart.set_y_axis({'name': 'RGB Values'})
+                    rgb_chart.set_legend({'position': 'bottom'})
+                    sheet_plot.insert_chart('B22', rgb_chart, {'x_scale': 2.0, 'y_scale': 1.2})
+
+                    workbook.close()
+
+                else:
+                    # CSV Export
+                    if not path.endswith(".csv"):
+                        path += ".csv"
+                    with open(path, 'w', newline='') as csvfile:
+                        writer = csv.writer(csvfile)
+                        writer.writerow(['Index', 'Timestamp', 'Light', 'Red', 'Green', 'Blue'])
+                        for i in range(min_len):
+                            writer.writerow([i, f"'{timestamps[i]}", light[i], r[i], g[i], b[i]])
+
+                self.log_window.log_message(f"\nSaved RGB and Light data to: {path}")
+
+            except Exception as e:
+                self.log_window.log_message(f"\nFailed to save file: {e}")
+
+
+            
+    # def on_save_csv(self, event):
+    #     """
+    #     Ask the user to choose file format (.xlsx or .csv) and save RGB/Light data.
+    #     """
+    #     # import xlsxwriter  # Ensure this import exists at top of file if not already
+
+    #     format_dialog = wx.SingleChoiceDialog(
+    #         self,
+    #         "Choose a file format to save:",
+    #         "Save As",
+    #         ["XLSX (Excel)", "CSV"]
+    #     )
+
+    #     if format_dialog.ShowModal() != wx.ID_OK:
+    #         return  # User cancelled
+
+    #     file_type = format_dialog.GetStringSelection()
+    #     wildcard = "Excel files (*.xlsx)|*.xlsx" if "XLSX" in file_type else "CSV files (*.csv)|*.csv"
+
+    #     with FileDialog(self, "Save File", wildcard=wildcard,
+    #                     style=FD_SAVE | FD_OVERWRITE_PROMPT) as fileDialog:
+    #         if fileDialog.ShowModal() == wx.ID_CANCEL:
+    #             return  # User cancelled
+
+    #         path = fileDialog.GetPath()
+    #         r = self.rgb_data.get("R", [])
+    #         g = self.rgb_data.get("G", [])
+    #         b = self.rgb_data.get("B", [])
+    #         light = self.rgb_data.get("Light", [])
+    #         timestamps = getattr(self, "timestamps", [])
+
+    #         min_len = min(len(r), len(g), len(b), len(light), len(timestamps))
+
+    #         try:
+    #             if "XLSX" in file_type:
+    #                 if not path.endswith(".xlsx"):
+    #                     path += ".xlsx"
+    #                 workbook = xlsxwriter.Workbook(path)
+
+    #                 # Sheet 1: Data
+    #                 sheet_main = workbook.add_worksheet("RGB and Light Data")
+    #                 # Sheet 2: For Plotting
+    #                 sheet_plot = workbook.add_worksheet("Plotting")
+
+    #                 # Define formats
+    #                 header_format = workbook.add_format({'bold': True, 'align': 'center', 'valign': 'vcenter'})
+    #                 center_format = workbook.add_format({'align': 'center', 'valign': 'vcenter'})
+
+    #                 # Header row
+    #                 headers = ['Index', 'Timestamp', 'Light', 'Red', 'Green', 'Blue']
+    #                 for col, header in enumerate(headers):
+    #                     sheet_main.write(0, col, header, header_format)
+    #                     sheet_plot.write(0, col, header, header_format)
+
+    #                 # Data rows
+    #                 for i in range(min_len):
+    #                     row = [i, timestamps[i], light[i], r[i], g[i], b[i]]
+    #                     for col, value in enumerate(row):
+    #                         sheet_main.write(i + 1, col, value, center_format)
+    #                         sheet_plot.write(i + 1, col, value, center_format)
+
+    #                 # Column widths
+    #                 for sheet in (sheet_main, sheet_plot):
+    #                     sheet.set_column('A:A', 8)
+    #                     sheet.set_column('B:B', 23)
+    #                     sheet.set_column('C:F', 10)
+
+    #                 # === Insert line chart in Plotting sheet ===
+    #                 chart = workbook.add_chart({'type': 'line'})
+
+    #                 chart.add_series({
+    #                     'name':       'Light',
+    #                     'categories': ['Plotting', 1, 0, min_len, 0],
+    #                     'values':     ['Plotting', 1, 2, min_len, 2],
+    #                     'line':       {'color': 'orange'}
+    #                 })
+    #                 chart.add_series({
+    #                     'name':       'Red',
+    #                     'categories': ['Plotting', 1, 0, min_len, 0],
+    #                     'values':     ['Plotting', 1, 3, min_len, 3],
+    #                     'line':       {'color': 'red'}
+    #                 })
+    #                 chart.add_series({
+    #                     'name':       'Green',
+    #                     'categories': ['Plotting', 1, 0, min_len, 0],
+    #                     'values':     ['Plotting', 1, 4, min_len, 4],
+    #                     'line':       {'color': 'green'}
+    #                 })
+    #                 chart.add_series({
+    #                     'name':       'Blue',
+    #                     'categories': ['Plotting', 1, 0, min_len, 0],
+    #                     'values':     ['Plotting', 1, 5, min_len, 5],
+    #                     'line':       {'color': 'blue'}
+    #                 })
+
+    #                 chart.set_title({'name': 'RGB and Light Sensor Data'})
+    #                 chart.set_x_axis({'name': 'Index'})
+    #                 chart.set_y_axis({'name': 'Sensor Values'})
+    #                 chart.set_legend({'position': 'bottom'})
+
+    #                 # Place chart in Plotting sheet at cell H2
+    #                 sheet_plot.insert_chart('H2', chart, {'x_scale': 2.0, 'y_scale': 1.5})
+
+    #                 workbook.close()
+
+    #             else:
+    #                 if not path.endswith(".csv"):
+    #                     path += ".csv"
+    #                 with open(path, 'w', newline='') as csvfile:
+    #                     writer = csv.writer(csvfile)
+    #                     writer.writerow(['Index', 'Timestamp', 'Light', 'Red', 'Green', 'Blue'])
+    #                     for i in range(min_len):
+    #                         writer.writerow([i, f"'{timestamps[i]}", light[i], r[i], g[i], b[i]])
+
+    #             self.log_window.log_message(f"\nSaved RGB and Light data to: {path}")
+
+    #         except Exception as e:
+    #             self.log_window.log_message(f"\nFailed to save file: {e}")
+
+    
+    # def on_save_csv(self, event):
+    #     """
+    #     Ask the user to choose file format (.xlsx or .csv) and save RGB/Light data.
+    #     """
+    #     # Ask user for file format
+    #     format_dialog = wx.SingleChoiceDialog(
+    #         self,
+    #         "Choose a file format to save:",
+    #         "Save As",
+    #         ["XLSX (Excel)", "CSV"]
+    #     )
+
+    #     if format_dialog.ShowModal() != wx.ID_OK:
+    #         return  # User cancelled
+
+    #     file_type = format_dialog.GetStringSelection()
+    #     wildcard = "Excel files (*.xlsx)|*.xlsx" if "XLSX" in file_type else "CSV files (*.csv)|*.csv"
+
+    #     with FileDialog(self, "Save File", wildcard=wildcard,
+    #                     style=FD_SAVE | FD_OVERWRITE_PROMPT) as fileDialog:
+    #         if fileDialog.ShowModal() == wx.ID_CANCEL:
+    #             return  # User cancelled
+
+    #         path = fileDialog.GetPath()
+    #         r = self.rgb_data.get("R", [])
+    #         g = self.rgb_data.get("G", [])
+    #         b = self.rgb_data.get("B", [])
+    #         light = self.rgb_data.get("Light", [])
+    #         timestamps = getattr(self, "timestamps", [])
+
+    #         min_len = min(len(r), len(g), len(b), len(light), len(timestamps))
+
+    #         try:
+    #             if "XLSX" in file_type:
+    #                 if not path.endswith(".xlsx"):
+    #                     path += ".xlsx"
+    #                 workbook = xlsxwriter.Workbook(path)
+
+    #                 # Sheet 1: Data
+    #                 sheet_main = workbook.add_worksheet("RGB and Light Data")
+    #                 # Sheet 2: Duplicate for plotting
+    #                 sheet_plot = workbook.add_worksheet("Plotting")
+
+    #                 # Define formats
+    #                 header_format = workbook.add_format({'bold': True, 'align': 'center', 'valign': 'vcenter'})
+    #                 center_format = workbook.add_format({'align': 'center', 'valign': 'vcenter'})
+
+    #                 # Header row
+    #                 headers = ['Index', 'Timestamp', 'Light', 'Red', 'Green', 'Blue']
+    #                 for col, header in enumerate(headers):
+    #                     sheet_main.write(0, col, header, header_format)
+    #                     sheet_plot.write(0, col, header, header_format)
+
+    #                 # Data rows
+    #                 for i in range(min_len):
+    #                     row = [i, timestamps[i], light[i], r[i], g[i], b[i]]
+    #                     for col, value in enumerate(row):
+    #                         sheet_main.write(i + 1, col, value, center_format)
+    #                         sheet_plot.write(i + 1, col, value, center_format)
+
+    #                 # Column widths
+    #                 for sheet in (sheet_main, sheet_plot):
+    #                     sheet.set_column('A:A', 8)
+    #                     sheet.set_column('B:B', 23)
+    #                     sheet.set_column('C:F', 10)
+
+    #                 workbook.close()
+
+
+    #             else:
+    #                 if not path.endswith(".csv"):
+    #                     path += ".csv"
+    #                 with open(path, 'w', newline='') as csvfile:
+    #                     writer = csv.writer(csvfile)
+    #                     writer.writerow(['Index', 'Timestamp', 'Light', 'Red', 'Green', 'Blue'])
+    #                     for i in range(min_len):
+    #                         writer.writerow([i, f"'{timestamps[i]}", light[i], r[i], g[i], b[i]])
+
+    #             self.log_window.log_message(f"\nSaved RGB and Light data to: {path}")
+
+    #         except Exception as e:
+    #             self.log_window.log_message(f"\nFailed to save file: {e}")
