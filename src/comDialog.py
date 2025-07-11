@@ -18,11 +18,26 @@ import wx
 import os
 from model2450lib import searchmodel
 from model2450lib.model2450 import Model2450
+import time
 from uiGlobal import *
+import serial
+import serial.tools.list_ports
 
 #======================================================================
 # COMPONENTS
 #======================================================================
+
+def send_packets_command_to_all_ports():
+    ports = serial.tools.list_ports.comports()
+    for port in ports:
+        try:
+            ser = serial.Serial(port.device, baudrate=115200, timeout=1)
+            # print(f"Sending 'packets' to {port.device}")
+            ser.write(b'packets\r\n')
+            time.sleep(0.1)
+            ser.close()
+        except Exception as e:
+            print(f"Failed to send on {port.device}: {e}")
 
 class ComDialog(wx.Dialog):
     """
@@ -45,7 +60,6 @@ class ComDialog(wx.Dialog):
         self.SetIcon(wx.Icon(os.path.join(os.path.abspath(os.path.dirname(__file__)), "icons", IMG_ICON)))
 
         self.device = None
-
         vbox = wx.BoxSizer(wx.VERTICAL)
         hbox = wx.BoxSizer(wx.HORIZONTAL)
         search_btn = wx.Button(self, label="Search")
@@ -56,38 +70,43 @@ class ComDialog(wx.Dialog):
         hbox.Add(self.port_text, 1, wx.ALL | wx.CENTER, 5)
         hbox.Add(connect_btn, 0, wx.ALL | wx.CENTER, 5)
 
-        self.result_text = wx.StaticText(self, label="Device not connected")
-
+        # self.result_text = wx.StaticText(self)
         vbox = wx.BoxSizer(wx.VERTICAL)
         vbox.Add(hbox, 0, wx.EXPAND)
-        vbox.Add(self.result_text, 0, wx.ALL, 10)
-
+        # vbox.Add(self.result_text, 0, wx.ALL, 10)
         search_btn.Bind(wx.EVT_BUTTON, self.on_search)
         connect_btn.Bind(wx.EVT_BUTTON, self.on_connect)
         self.SetSizer(vbox)
-
+    
     def on_search(self, event):
         """
         Event handler for the Search button.
 
-        Uses `searchmodel.get_models()` to scan for available devices,
-        then populates the ComboBox with results. Displays a message
-        if no devices are found.
+        - Scans for available Model2450 devices.
+        - If no devices are found initially, sends the 'packets' command to all ports.
+        - Then scans again and updates the ComboBox with available devices.
         """
-        dev_list = searchmodel.get_models()  # Fetch devices using the searchmodel
-        print(dev_list)
-        if dev_list and "models" in dev_list:
-            dev_list = dev_list["models"]
-            self.port_text.Clear()  # Clear existing items in the ComboBox
-            if len(dev_list) > 0:
-                for dev in dev_list:
+        def try_search_and_update():
+            dev_list = searchmodel.get_models()
+            if dev_list and "models" in dev_list and len(dev_list["models"]) > 0:
+                self.port_text.Clear()
+                for dev in dev_list["models"]:
                     display_text = f"{dev['model']} ({dev['port']})"
                     self.port_text.Append(display_text)
-                self.port_text.Select(0)  # Select the first port in the list
-            else:
-                self.result_text.SetLabel("No devices found")
-        else:
-            self.result_text.SetLabel("No devices found")
+                self.port_text.Select(0)
+                # self.result_text.SetLabel("Devices found.")
+                return True
+            return False
+
+        found = try_search_and_update()
+        if not found:
+            # self.result_text.SetLabel("No devices found. Sending 'packets' command...")
+            send_packets_command_to_all_ports()
+            time.sleep(1.0)  # Wait for devices to respond
+            found = try_search_and_update()
+            if not found:
+                # self.result_text.SetLabel("No devices found even after sending packets.")
+                pass
 
     def on_connect(self, event):
         """
@@ -103,16 +122,17 @@ class ComDialog(wx.Dialog):
             try:
                 port = selection.split('(')[1].strip(')')
             except IndexError:
-                self.result_text.SetLabel("Invalid selection format.")
+                # self.result_text.SetLabel("Invalid selection format.")
+                pass
                 return
-
             try:
                 self.device = Model2450(port)
                 self.device.connect()
                 sn = self.device.read_sn()
-
-                # Set the status bar text
-                self.GetParent().SetStatusText(f"{sn}")
+                self.device.sn = sn  # Set serial number to device object
+                self.GetParent().SetStatusText(port, 0)
+                self.GetParent().SetStatusText("Connected", 1)
+                self.GetParent().SetStatusText(f"SN: {sn}", 2)
 
                 # Pass the connected device to the ControlPanel
                 self.GetParent().control_tab.set_device(self.device)
@@ -121,13 +141,15 @@ class ComDialog(wx.Dialog):
                 
                 self.EndModal(wx.ID_OK)  # Close the dialog with success
                 # Display a popup dialog confirming the connection
-                wx.MessageBox(f"Device connected successfully.\nSerial Number: {sn}",
+                wx.MessageBox(f"Device Connected Successfully.\n{sn}",
                             "Connection Successful", wx.OK | wx.ICON_INFORMATION)
 
                 # Close the dialog after successful connection
                 self.Close()
                 self.EndModal(wx.ID_OK)  # Close the dialog with success
             except Exception as e:
-                self.result_text.SetLabel(f"Connection failed: {str(e)}")
+                # self.result_text.SetLabel(f"Connection failed: {str(e)}")
+                pass
         else:
-            self.result_text.SetLabel("Please select a device from the list.")
+            # self.result_text.SetLabel("Please select a device from the list.")
+            pass
