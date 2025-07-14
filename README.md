@@ -79,6 +79,13 @@ the Model 2450 allows you to test the Brightness and color of video displays on 
 
 ## Release History
 
+- v2.0.0 Release Model 2450 UI
+
+    -  [#4 adding plotting for stream ](https://github.com/mcci-usb/model2450-ui/commit/d837fcad54a1a84dd0a923c8f14cc0e69c29011c)
+    -  [#6 Model2450 search](https://github.com/mcci-usb/model2450-ui/commit/e47b86699ee8f850378dfbb29ad00de6c4a3fdc9)
+    - [#7 Add Timestampe](https://github.com/mcci-usb/model2450-ui/commit/cb856f3cb22b2ad906e27d251c203b86fca10121)
+
+
 - v1.0.0 initial release of Model 2450 UI.
 
     - Initial Release.
