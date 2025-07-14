@@ -4,13 +4,13 @@
 # Module: aboutDialog.py
 #
 # Description:
-#     Dialog to display copyright information
+#      Dialog to display copyright information
 #
 # Author:
-#     Vinay N, MCCI Corporation Aug 2024
+#     Vinay N, MCCI Corporation May 2025
 #
 # Revision history:
-#     V1.0.0 Mon Aug 12 2024 01:00:00   Vinay N 
+#     V2.0.0 Mon May 2025 01:00:00   Vinay N 
 #       Module created
 ##############################################################################
 import wx

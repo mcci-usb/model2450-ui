@@ -6,57 +6,38 @@
 #     view the device log.
 #
 # Author:
-#     Vinay N, MCCI Corporation Aug 2024
+#     Vinay N, MCCI Corporation May 2025
 #
 # Revision history:
-#     V1.0.0 Mon Aug 12 2024 01:00:00   Vinay N 
+#     V2.0.0 Mon May 15 2025 01:00:00   Vinay N 
 #       Module created
 
 ##############################################################################
-# Lib imports
 import wx
-
-# Own modules
-from uiGlobal import *
+import sys
 from datetime import datetime
+import os
+
+#======================================================================
+# COMPONENTS
+#======================================================================
 
 class LogWindow(wx.Window):
-    """
-    A class logWindow with init method
+    def __init__(self, parent):
+        """Initialize the LogWindow UI components and layout."""
+        super().__init__(parent)
 
-    To show the all actions while handling ports of devices 
-    """
-    def __init__(self, parent, top):
-        """
-        logWindow values displayed for all Models 3201, 3141,2101 
-        Args:
-            self: The self parameter is a reference to the current 
-            instance of the class,and is used to access variables
-            that belongs to the class.
-            parent: Pointer to a parent window.
-            top: creates an object
-        Returns:
-            None
-        """
-        wx.Window.__init__(self, parent)
-        # SET BACKGROUND COLOUR TO White
-        self.SetBackgroundColour("White")
-
-        self.top = top
         # Create static box with naming of Log Window
         sb = wx.StaticBox(self, -1,"Log Window")
-        
 
         # Create StaticBoxSizer as vertical
         self.vbox = wx.StaticBoxSizer(sb, wx.VERTICAL)
-
-        
         self.cb_timestamp = wx.CheckBox(self, -1, "Timestamp")
         self.cb_timestamp.SetToolTip(wx.ToolTip("Include timestamp in log messages"))
 
-        self.btn_save = wx.Button(self, ID_BTN_AUTO, "Save",
+        self.btn_save = wx.Button(self, -1, "Save",
                                         size=(60, -1))  
-        self.btn_clear = wx.Button(self, ID_BTN_CLEAR, "Clear",
+        self.btn_clear = wx.Button(self, -1, "Clear",
                                          size=(60, 25))
         
         # set tooltip for modeling interval and auto buttons.
@@ -65,7 +46,6 @@ class LogWindow(wx.Window):
         
         self.btn_clear.SetToolTip(wx.
                       ToolTip("Clear the Logs"))
-        
         
         self.scb = wx.TextCtrl(self, -1, style= wx.TE_MULTILINE | wx.TE_READONLY, size=(-1,-1))
         self.scb.SetEditable(False)
@@ -102,20 +82,27 @@ class LogWindow(wx.Window):
         self.Layout()
     
     def log_message(self, message):
-        """
-        Print the data in the LogWindow, with optional timestamp.
-        """
-        if self.cb_timestamp.IsChecked():
-            # Add timestamp if checkbox is checked
-            ct = datetime.now()
-            timestamp = ct.strftime("%Y-%m-%d  %H:%M:%S.%f")
-            cstr = "[" + timestamp[:-3] + "]  "
-            message = f"{cstr}   {message}"  # Add spaces between timestamp and message
-        else:
-            message = f"{message}"
-        
-        self.scb.AppendText(message)
-  
+        """Log a message with optional timestamp in the text area."""
+        try:
+            if self.cb_timestamp.IsChecked():
+                ct = datetime.now()
+                timestamp = ct.strftime("%Y-%m-%d  %H:%M:%S.%f")
+                # print(timestamp)
+                cstr = f"[{timestamp[:-3]}]  "  # ✅ Only 2 spaces after timestamp
+                # print(cstr)
+                message = f"{cstr}{message}"
+                # print(message)
+            self.scb.AppendText(message + "\n")  # Append line
+        except Exception as e:
+            print(f"Log message error: {e}")
+
+    def log_inline(self, message):
+        """Append a message to the log without a newline."""
+        try:
+            self.scb.AppendText(message)  # No newline
+        except Exception as e:
+            print(f"Log inline message error: {e}")
+
     def ClearLogWindow(self, e):
         """
         Event handler for Clear button
@@ -145,12 +132,10 @@ class LogWindow(wx.Window):
         Returns:
             None
         """
-        
         # Get the content of the control
         content = self.scb.GetValue()
         self.save_file(content, "*.txt")
-        
-    
+         
     def save_file (self, contents, extension):
         """
         Export the LogWindow/USBTreeWindow content to a file
