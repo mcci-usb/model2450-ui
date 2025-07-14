@@ -6,16 +6,20 @@
 #     Define all global variables for the entire UI Model2450 App.
 #
 # Author:
-#     Vinay N, MCCI Corporation Aug 2024
+#     Vinay N, MCCI Corporation May 2025
 #
 # Revision history:
-#     V1.0.0 Mon Aug 12 2024 01:00:00   Vinay N 
+#     V2.0.0 Mon May 2025 01:00:00   Vinay N 
 #       Module created
 
 ##############################################################################
 # Lib imports
 import wx
 import os
+
+#======================================================================
+# COMPONENTS
+#======================================================================
 
 DEFAULT_FONT_SIZE = 8
 DEV_2450    = 0
@@ -62,6 +66,8 @@ ID_DISCONNECT_MODEL = 2021
 ID_CALIBRATION = 2022
 ID_BLOCKFRAMES = 1547
 
+ID_PLOTTING = 1548
+
 ID_BTN_AUTO = 1050
 ID_BTN_CLEAR = 1051
 
@@ -83,8 +89,8 @@ mcci_support = "https://portal.mcci.com/portal/home"
 #======================================================================
 VERSION_NAME  = "\nMCCI"+u"\u00AE"+" Model2450 UI"
 VERSION_ID    = ""
-VERSION_COPY  = "\nCopyright "+u"\u00A9"+" 2024 MCCI Corporation"
-VERSION_STR = "V1.0.0"
+VERSION_COPY  = "\nCopyright "+u"\u00A9"+" 2025 MCCI Corporation"
+VERSION_STR = "V2.0.0"
 
 class NumericValidator(wx.Validator):
     """
