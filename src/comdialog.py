@@ -137,7 +137,7 @@ class ComDialog(wx.Dialog):
                 # Pass the connected device to the ControlPanel
                 self.GetParent().control_tab.set_device(self.device)
                 # Pass the connected device to FirmwarePanel
-                self.GetParent().firmware_tab.set_device(self.device)
+                # self.GetParent().firmware_tab.set_device(self.device)
                 
                 self.EndModal(wx.ID_OK)  # Close the dialog with success
                 # Display a popup dialog confirming the connection

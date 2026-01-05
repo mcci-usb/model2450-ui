@@ -89,8 +89,8 @@ mcci_support = "https://portal.mcci.com/portal/home"
 #======================================================================
 VERSION_NAME  = "\nMCCI"+u"\u00AE"+" Model2450 UI"
 VERSION_ID    = ""
-VERSION_COPY  = "\nCopyright "+u"\u00A9"+" 2025 MCCI Corporation"
-VERSION_STR = "V2.0.0"
+VERSION_COPY  = "\nCopyright "+u"\u00A9"+" 2026 MCCI Corporation"
+VERSION_STR = "V2.1.0"
 
 class NumericValidator(wx.Validator):
     """

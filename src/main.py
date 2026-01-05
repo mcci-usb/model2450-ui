@@ -32,7 +32,7 @@ from colorset import ColorSet
 class MainFrame(wx.Frame):
     def __init__(self, parent):
         """Initialize the main application frame, menus, tabs, and log window."""
-        super().__init__(None, title="MCCI Model2450 UI - Version 2.0.0", size=(600, 700))
+        super().__init__(None, title="MCCI Model2450 UI - Version 2.1.0", size=(600, 700))
         
         self.SetIcon(wx.Icon(os.path.join(os.path.abspath(os.path.dirname(__file__)), "icons", IMG_ICON)))
         # Create a status bar    
@@ -186,7 +186,7 @@ class MainFrame(wx.Frame):
             try:
                 self.control_tab.device.disconnect()  # Disconnect the device
                 self.control_tab.device = None
-                self.firmware_tab.clear_device()  # Clear device info from firmware tab
+                # self.firmware_tab.clear_device()  # Clear device info from firmware tab
                 self.SetStatusText("No COM", 0)
                 self.SetStatusText("Disconnected", 1)
                 self.SetStatusText("SN", 2)
