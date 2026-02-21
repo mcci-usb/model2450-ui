@@ -65,7 +65,7 @@ class MainFrame(wx.Frame):
         """
         super().__init__(
             None,
-            title="MCCI Model2450 UI - Version 2.1.0",
+            title="MCCI Model2450 UI - Version 2.2.0",
             size=(600, 700)
         )
 
