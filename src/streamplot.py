@@ -1,27 +1,73 @@
+##############################################################################
+#
+# Module: streamplot.py
+#
+# Description:
+#     Real-time streaming plot window for RGB and Light sensor data.
+#     Provides zoom, range selection, axis control, and export features.
+#
+# Author:
+#     Vinay N, MCCI Corporation February 2026
+#
+# Revision history:
+#     V2.2.0 Fri Feb 2026 20:02:2026   Vinay N
+#       Module created
+#
+##############################################################################
+# Built-in imports
+import os
+import csv
+import time
+import threading
+
+# Third-party imports
 import wx
 import serial
-import threading
-import time
-from matplotlib.backends.backend_wxagg import FigureCanvasWxAgg as FigureCanvas
-from matplotlib.figure import Figure
-from matplotlib.widgets import SpanSelector
-from matplotlib.ticker import MaxNLocator
-from matplotlib.ticker import MultipleLocator, FormatStrFormatter
-from matplotlib.ticker import FuncFormatter
-from matplotlib.ticker import MultipleLocator, AutoMinorLocator
-from matplotlib.ticker import ScalarFormatter
-from matplotlib.ticker import AutoMinorLocator
-import xlsxwriter
-import os
 import numpy as np
+import xlsxwriter
 
+from matplotlib.figure import Figure
+from matplotlib.backends.backend_wxagg import FigureCanvasWxAgg as FigureCanvas
+from matplotlib.widgets import SpanSelector
+
+from matplotlib.ticker import (
+    MaxNLocator,
+    MultipleLocator,
+    AutoMinorLocator,
+    ScalarFormatter,
+    FormatStrFormatter,
+    FuncFormatter
+)
+# Local application imports
 from uiGlobal import *
-# import mplcursors
-import csv
-import os
 
 # === Packet Decoding ===
 def decode_packet(packet_bytes):
+    """
+    Decode a raw binary packet received from the device.
+
+    Extracts header fields and payload data based on
+    Model2450 streaming protocol structure.
+
+    Args:
+        packet_bytes (bytes):
+            Raw packet bytes read from serial stream.
+
+    Returns:
+        dict:
+            Decoded packet fields:
+                - start_bit
+                - end_bit
+                - reserved
+                - command
+                - sequence
+                - length
+                - payload
+
+    Raises:
+        ValueError:
+            If packet is too short or length mismatch occurs.
+    """
     if len(packet_bytes) < 2:
         raise ValueError("Packet too short to decode header.")
     header_byte_0 = packet_bytes[0]
@@ -46,6 +92,21 @@ def decode_packet(packet_bytes):
     }
 
 def read_packet_from_serial(ser):
+    """
+    Read one complete packet from serial stream.
+
+    The function first reads header bytes to determine
+    payload length, then reads remaining payload.
+
+    Args:
+        ser (serial.Serial):
+            Active serial connection object.
+
+    Returns:
+        bytes | None:
+            Complete packet bytes if successful,
+            otherwise None if timeout/incomplete read.
+    """
     header = ser.read(2)
     if len(header) < 2:
         return None
@@ -60,11 +121,41 @@ def read_packet_from_serial(ser):
     return header + payload
 
 def format_seconds_millis(x, _):
+    """
+    Format time axis values into seconds.milliseconds.
+
+    Args:
+        x (float):
+            Time value in seconds.
+        _ :
+            Matplotlib tick placeholder argument.
+
+    Returns:
+        str:
+            Formatted time string (e.g., 12.345s).
+    """
     seconds = int(x)
     millis = int((x - seconds) * 1000)
     return f"{seconds}.{millis:03d}s"
 
 class StreamPlotFrame(wx.Frame):
+    """
+    Real-time streaming plot window for Model2450 sensor data.
+
+    Features:
+        - Live RGB plotting
+        - Light intensity plotting
+        - Zoom and zoom-fit
+        - Span selection
+        - Axis limit configuration
+        - Data export (CSV / XLSX)
+
+    Args:
+        parent (wx.Window):
+            Parent window reference.
+        device (optional):
+            Connected Model2450 device instance.
+    """
     def __init__(self, parent, device=None):
         super(StreamPlotFrame, self).__init__(parent)
         self.device = device
@@ -178,6 +269,26 @@ class StreamPlotFrame(wx.Frame):
         self.canvas.mpl_connect("motion_notify_event", self.on_hover_motion)
 
     def on_rgb_hover(self, sel):
+        """
+        Display RGB values on hover selection.
+
+        Triggered by Matplotlib cursor/selection event.
+        Identifies the nearest RGB data point corresponding
+        to the hovered X-axis position and updates the
+        information label with R, G, and B values.
+
+        Args:
+            sel:
+                Matplotlib selection event object containing
+                cursor target coordinates.
+
+        Returns:
+            None
+
+        Notes:
+            • Safely handles empty datasets.
+            • Displays fallback message if no data available.
+        """
         x = sel.target[0]
         try:
             index = min(range(len(self.time_data_rgb)), key=lambda i: abs(self.time_data_rgb[i] - x))
@@ -189,6 +300,24 @@ class StreamPlotFrame(wx.Frame):
             self.info_text.SetLabel("RGB: No data")
 
     def on_light_hover(self, sel):
+        """
+        Display Light intensity value on hover selection.
+
+        Determines the closest Light data sample to the
+        hovered X-axis position and updates the info label.
+
+        Args:
+            sel:
+                Matplotlib selection event object containing
+                cursor target coordinates.
+
+        Returns:
+            None
+
+        Notes:
+            • Handles empty datasets safely.
+            • Displays fallback message when no data exists.
+        """
         x = sel.target[0]
         try:
             index = min(range(len(self.time_data_light)), key=lambda i: abs(self.time_data_light[i] - x))
@@ -199,6 +328,31 @@ class StreamPlotFrame(wx.Frame):
 
     # Remaining methods unchanged (make_axis_row, make_axis_box, read_serial, update_plot, etc.)
     def make_axis_row(self, parent, label):
+        """
+        Create axis control row for setting Y-axis limits.
+
+        Constructs UI controls allowing the user to:
+
+            • Enter minimum Y value.
+            • Enter maximum Y value.
+            • Apply axis limits to selected plot.
+
+        Args:
+            parent (wx.Window):
+                Parent container for layout placement.
+
+            label (str):
+                Axis identifier ("RGB" or "Light").
+
+        Returns:
+            wx.BoxSizer:
+                Configured horizontal sizer containing
+                axis controls and action button.
+
+        Notes:
+            • Text fields restrict input to numeric values.
+            • Button is bound to axis update handler.
+        """
         row_sizer = wx.BoxSizer(wx.HORIZONTAL)
 
         row_sizer.Add(wx.StaticText(parent, label=f"{label} Y min:"), 0,
@@ -222,6 +376,22 @@ class StreamPlotFrame(wx.Frame):
         return row_sizer
     
     def on_hover_motion(self, event):
+        """
+        Handle mouse hover motion over RGB and Light plots.
+
+        This method tracks cursor movement across the Matplotlib
+        axes and dynamically displays the nearest data values
+        corresponding to the cursor’s X-axis position.
+
+        Args:
+            event:
+                Matplotlib motion_notify_event containing:
+                    - Cursor X/Y position
+                    - Target axes reference
+
+        Returns:
+            None
+        """
         if event.inaxes == self.ax_rgb:
             try:
                 with self.data_lock:
@@ -291,9 +461,26 @@ class StreamPlotFrame(wx.Frame):
         else:
             self.info_text.SetLabel("Hover over plot to see RGB/Light data")
 
-
-    
     def make_axis_collapse_panel(self):
+        """
+        Create collapsible panel for axis limit controls.
+
+        Builds a wx.CollapsiblePane containing axis limit
+        configuration controls for both RGB and Light plots.
+
+        UI Components Created:
+            • Collapsible container pane.
+            • RGB axis limit input row.
+            • Light axis limit input row.
+
+        Args:
+            None
+
+        Returns:
+            wx.CollapsiblePane:
+                Configured collapsible UI panel.
+
+        """
         # Create the collapsible pane
         collapse = wx.CollapsiblePane(self,
                                     label="Set Axis Limit >",
@@ -313,11 +500,59 @@ class StreamPlotFrame(wx.Frame):
         pane.SetSizer(sizer)
         return collapse
     def on_pane_changed(self, event):
+        """
+        Handle collapsible pane state change.
+
+        Triggered when the axis control pane is expanded
+        or collapsed.
+
+        Functional Behavior:
+            • Recalculates layout of parent frame.
+            • Maintains fixed outer window size.
+            • Ensures UI elements reposition correctly.
+
+        Args:
+            event:
+                wx.CollapsiblePaneEvent triggered by
+                expand/collapse action.
+
+        Returns:
+            None
+        """
         # Keep the frame size locked, just rearrange children
         self.Layout()
         event.Skip()
     # ... rest of your methods unchanged (on_axis_set, on_start, on_stop, update_plot, etc.)
     def make_axis_box(self, label):
+        """
+        Create axis limit control group box.
+
+        This method builds a static UI container that allows users
+        to configure Y-axis limits for a specific plot.
+
+        UI Components Created:
+            • Static box container with title.
+            • Y-minimum input field.
+            • Y-maximum input field.
+            • “Set Axis” action button.
+
+        Functional Behavior:
+            • Assigns control names dynamically using label.
+            • Binds numeric validation handler to inputs.
+            • Binds axis update handler to action button.
+            • Arranges controls using horizontal + vertical sizers.
+
+        Args:
+            label (str):
+                Axis identifier name.
+                Example:
+                    "RGB"
+                    "Light"
+
+        Returns:
+            wx.StaticBoxSizer:
+                Configured sizer containing axis controls.
+        """
         box = wx.StaticBox(self, label=label + " Axis Limits")
         sizer = wx.StaticBoxSizer(box, wx.VERTICAL)
         row_sizer = wx.BoxSizer(wx.HORIZONTAL)
@@ -342,6 +577,35 @@ class StreamPlotFrame(wx.Frame):
         return sizer
     
     def on_char_numeric_only(self, event):
+        """
+        Create axis limit control group box.
+
+        This method builds a static UI container that allows users
+        to configure Y-axis limits for a specific plot.
+
+        UI Components Created:
+            • Static box container with title.
+            • Y-minimum input field.
+            • Y-maximum input field.
+            • “Set Axis” action button.
+
+        Functional Behavior:
+            • Assigns control names dynamically using label.
+            • Binds numeric validation handler to inputs.
+            • Binds axis update handler to action button.
+            • Arranges controls using horizontal + vertical sizers.
+
+        Args:
+            label (str):
+                Axis identifier name.
+                Example:
+                    "RGB"
+                    "Light"
+
+        Returns:
+            wx.StaticBoxSizer:
+                Configured sizer containing axis controls.
+        """
         keycode = event.GetKeyCode()
         if keycode < wx.WXK_SPACE or keycode == wx.WXK_DELETE or keycode > 255:
             event.Skip()
@@ -359,6 +623,33 @@ class StreamPlotFrame(wx.Frame):
             event.Skip()
             
     def on_axis_set(self, event):
+        """
+        Apply user-defined axis limits to plots.
+
+        This method reads Y-axis limit values entered
+        in the UI and updates the corresponding plot
+        axis range.
+
+        Functional Behavior:
+            • Identifies axis type from button name.
+            • Fetches Y-min and Y-max input values.
+            • Converts values to float.
+            • Updates stored axis limit configuration.
+            • Applies limits to target Matplotlib axis.
+            • Triggers plot redraw.
+
+        Args:
+            event:
+                wx.ButtonEvent generated when
+                “Set Axis” button is clicked.
+
+        Returns:
+            None
+
+        Supported Axes:
+            • RGB plot
+            • Light intensity plot
+        """
         btn = event.GetEventObject()
         label = btn.GetName()  # 'rgb' or 'light'
         limits = {"ymin": None, "ymax": None}
@@ -371,20 +662,42 @@ class StreamPlotFrame(wx.Frame):
                     pass
 
         if label == "rgb":
-            # if limits["xmin"] is not None and limits["xmax"] is not None:
-            #     self.ax_rgb.set_xlim(limits["xmin"], limits["xmax"])
             if limits["ymin"] is not None and limits["ymax"] is not None:
                 self.rgb_ylim = [limits["ymin"], limits["ymax"]]
                 self.ax_rgb.set_ylim(self.rgb_ylim)
         elif label == "light":
-            # if limits["xmin"] is not None and limits["xmax"] is not None:
-            #     self.ax_light.set_xlim(limits["xmin"], limits["xmax"])
             if limits["ymin"] is not None and limits["ymax"] is not None:
                 self.light_ylim = [limits["ymin"], limits["ymax"]]
                 self.ax_light.set_ylim(self.light_ylim)
         self.canvas.draw()
 
     def on_start(self, event):
+        """
+        Start real-time data streaming and plotting.
+
+        This method initiates sensor data streaming from
+        the connected Model2450 device and begins
+        real-time plot updates.
+
+        Functional Behavior:
+            • Sends "stream 3" command to device.
+            • Enables streaming state flag.
+            • Launches background serial read thread.
+            • Starts periodic UI update timer.
+
+        Execution Flow:
+            1. Obtain active serial handle from device.
+            2. Send streaming command.
+            3. Spawn daemon thread for read_serial().
+            4. Start wx.Timer for plot refresh (500 ms interval).
+
+        Args:
+            event:
+                wx.ButtonEvent triggered by Start button.
+
+        Returns:
+            None
+        """
         self.ser = self.device.ser
         self.ser.write(b"stream 3\r\n")
 
@@ -395,6 +708,27 @@ class StreamPlotFrame(wx.Frame):
             self.timer.Start(500)
     
     def on_reset(self, event):
+        """
+        Reset all streamed data and refresh plot.
+
+        Clears all buffered RGB and Light data along with
+        associated timestamp arrays. Resets the streaming
+        reference time and redraws the plot canvas.
+
+        Functional Behavior:
+            • Acquire thread lock for safe data clearing.
+            • Clear RGB, Light, and time buffers.
+            • Reset start_time reference.
+            • Trigger plot redraw.
+
+        Args:
+            event:
+                wx.ButtonEvent triggered by Reset button.
+
+        Returns:
+            None
+            
+        """
         with self.data_lock:
             self.r_data.clear()
             self.g_data.clear()
@@ -406,6 +740,25 @@ class StreamPlotFrame(wx.Frame):
         self.canvas.draw()
     
     def on_stop(self, event):
+        """
+        Stop real-time streaming and freeze plot.
+
+        Terminates live data acquisition from the device
+        and stops periodic UI updates.
+
+        Functional Behavior:
+            • Disable streaming state flag.
+            • Send "stream 0" command to device.
+            • Stop wx.Timer updates.
+            • Update slider to final data position.
+
+        Args:
+            event:
+                wx.ButtonEvent triggered by Stop button.
+
+        Returns:
+            None
+        """
         self.keep_running = False
         if self.ser:
             self.ser.write(b"stream 0\r\n")
@@ -415,6 +768,29 @@ class StreamPlotFrame(wx.Frame):
             self.slider.SetValue(self.slider.GetMax())
     
     def adjust_zoom(self, factor):
+        """
+        Adjust horizontal zoom level of the plot view.
+
+        Modifies the zoom scale applied to the time axis
+        for both RGB and Light plots. Zooming is disabled
+        while real-time streaming is active to prevent
+        UI conflicts.
+
+        Functional Behavior:
+            • Ignore zoom requests during streaming.
+            • Multiply current zoom_scale by factor.
+            • Enforce minimum zoom limit.
+            • Refresh plot with updated zoom window.
+
+        Args:
+            factor (float):
+                Zoom multiplier.
+                • < 1.0 → Zoom In
+                • > 1.0 → Zoom Out
+
+        Returns:
+            None
+        """
         if self.keep_running:
             print("[Zoom] Ignored during streaming")
             return  # Do not zoom while streaming
@@ -425,6 +801,30 @@ class StreamPlotFrame(wx.Frame):
         self.update_plot(None)
      
     def on_zoom_fit(self, event):
+        """
+        Enable Zoom-Fit mode for the stream plots.
+
+        Adjusts the plot view to display the entire
+        available dataset (RGB and Light) within
+        the visible window. This provides a full
+        historical view instead of the rolling
+        time window used during streaming.
+
+        Functional Behavior:
+            • Stops real-time streaming visualization.
+            • Activates zoom_fit_mode.
+            • Calculates maximum dataset length.
+            • Updates slider range to dataset size.
+            • Moves slider to latest data position.
+            • Refreshes plot display.
+
+        Args:
+            event:
+                wxPython button click event object.
+
+        Returns:
+            None
+        """
         self.keep_running = False
         self.zoom_fit_mode = True
         with self.data_lock:
@@ -435,17 +835,72 @@ class StreamPlotFrame(wx.Frame):
                 self.slider.SetValue(self.slider.GetMax())
         self.update_plot(None)
 
-
-
     def on_slider_scroll(self, event):
+        """
+        Handle slider scroll event for time navigation.
+
+        Updates the plot view based on the slider’s
+        current position. This allows the user to
+        manually navigate through previously captured
+        RGB and Light streaming data when real-time
+        streaming is stopped.
+
+        Functional Behavior:
+            • Captures slider movement.
+            • Determines selected time index.
+            • Refreshes plot display accordingly.
+            • Shows historical data relative to
+            the selected slider position.
+
+        Args:
+            event:
+                wxPython slider scroll event object.
+
+        Returns:
+            None
+        """
         self.update_plot(None)
-        # if not self.keep_running:
-        #     self.update_plot(None)
+
 
     def on_checkbox_toggle(self, event):
+        """
+        Handle checkbox toggle for plot data visibility.
+
+        Updates the plot display when the user enables
+        or disables RGB or Light data channels using
+        checkbox controls.
+
+        Functional Behavior:
+            • Detects checkbox state change.
+            • Refreshes plot only when streaming is stopped.
+            • Dynamically shows or hides selected channels.
+
+        Args:
+            event:
+                wxPython checkbox event object.
+
+        Returns:
+            None
+        """
         if not self.keep_running:
             self.update_plot(None)
     def read_serial(self):
+        """
+        Read and process streaming sensor data from the device serial port.
+
+        This method runs in a background thread and continuously reads
+        packetized data from the connected Model2450 device. It decodes
+        incoming packets, extracts payload content, parses RGB and Light
+        sensor values, and appends them to internal data buffers for
+        real-time plotting.
+
+        Args:
+            None
+
+        Returns:
+            None
+
+        """
         buffer = b""
         while self.keep_running:
             packet = read_packet_from_serial(self.ser)
@@ -491,6 +946,27 @@ class StreamPlotFrame(wx.Frame):
                             buf[:] = buf[-maxlen:]
     
     def update_plot(self, event):
+        """
+        Render and refresh real-time RGB and Light intensity plots.
+
+        This method updates the matplotlib canvas using the latest
+        buffered sensor data. It supports live streaming visualization,
+        zoom control, slider navigation, channel filtering, and
+        zoom-fit display modes.
+
+        Plot Sections:
+            • Upper Plot  → RGB Intensity
+            • Lower Plot  → Light Intensity (Lux)
+
+
+        Args:
+            event:
+                wx.Timer or UI event trigger.
+
+        Returns:
+            None
+
+        """
         with self.data_lock:
             r_data = self.r_data[:]
             g_data = self.g_data[:]
@@ -608,7 +1084,6 @@ class StreamPlotFrame(wx.Frame):
                 self.ax_rgb.grid(True, which='major', axis='both', color='gray', linestyle='--', linewidth=0.7)
                 self.ax_rgb.grid(True, which='minor', axis='both', color='gray', linestyle=':', linewidth=0.5)
 
-
         if self.light_cb.GetValue() and time_data_light:
             if self.zoom_fit_mode:
                 duration_light = time_data_light[-1] - time_data_light[0]
@@ -620,12 +1095,6 @@ class StreamPlotFrame(wx.Frame):
                 current_time = time_data_light[-1] if self.keep_running else time_data_light[min(self.slider.GetValue(), len(time_data_light)-1)]
                 x_vals_all = [current_time - t for t in time_data_light]
                 plot_duration = plot_window
-
-            # y_vals_all = light_data
-            # display_indices = [i for i, x in enumerate(x_vals_all) if 0 <= x <= plot_duration]
-
-            # x_vals = np.array([x_vals_all[i] for i in display_indices])
-            # y_vals = np.array([y_vals_all[i] for i in display_indices])
             
             y_vals_all = np.array(light_data, dtype=np.float32)
             y_vals_all[y_vals_all == 0] = np.nan  # Convert 0 to NaN
@@ -657,6 +1126,41 @@ class StreamPlotFrame(wx.Frame):
             self.zoom_fit_mode = False
 
     def filter_rgb_nonzero(x_vals, r_data, g_data, b_data, indices):
+        """
+        Filter and extract non-zero RGB data points for plotting.
+
+        This helper function selects RGB samples whose values are
+        not all zero within the specified index range. It is used
+        to remove empty or inactive sensor readings before
+        visualization.
+
+        Args:
+            x_vals (list[float]):
+                Time or X-axis values corresponding to samples.
+
+            r_data (list[int]):
+                Red channel intensity values.
+
+            g_data (list[int]):
+                Green channel intensity values.
+
+            b_data (list[int]):
+                Blue channel intensity values.
+
+            indices (list[int]):
+                Index positions to evaluate and filter.
+
+        Returns:
+            tuple:
+                A tuple containing filtered datasets:
+
+                (
+                    filtered_x_vals,
+                    filtered_r_vals,
+                    filtered_g_vals,
+                    filtered_b_vals
+                )
+        """
         return zip(*[
             (x_vals[i], r_data[i], g_data[i], b_data[i])
             for i in indices
@@ -664,16 +1168,82 @@ class StreamPlotFrame(wx.Frame):
         ]) if any(r_data[i] or g_data[i] or b_data[i] for i in indices) else ([], [], [], [])
 
     def on_rgb_range_select(self, xmin, xmax):
+        """
+        Handle horizontal range selection on the RGB plot.
+
+        This method is triggered when the user selects a time range
+        using the SpanSelector tool on the RGB intensity graph.
+
+        Functional Behavior:
+            • Receives the selected X-axis range.
+            • Updates the RGB plot view limits.
+            • Redraws the canvas to reflect the zoomed region.
+
+        Args:
+            xmin (float):
+                Start value of the selected X-axis range (time).
+
+            xmax (float):
+                End value of the selected X-axis range (time).
+
+        Returns:
+            None
+        """
         # pass
         self.ax_rgb.set_xlim(xmin, xmax)
         self.canvas.draw()
 
     def on_light_range_select(self, xmin, xmax):
+        """
+        Handle horizontal range selection on the Light plot.
+
+        This method is triggered when the user selects a time range
+        using the SpanSelector tool on the Light Intensity graph.
+
+        Functional Behavior:
+            • Receives the selected X-axis range.
+            • Updates the Light plot view limits.
+            • Redraws the canvas to reflect the zoomed region.
+
+        Args:
+            xmin (float):
+                Start value of the selected X-axis range (time).
+
+            xmax (float):
+                End value of the selected X-axis range (time).
+
+        Returns:
+            None
+        """
         # pass
         self.ax_light.set_xlim(xmin, xmax)
         self.canvas.draw()
     
     def on_save_csv(self, event):
+        """
+        Save streamed sensor data to a file.
+
+        This method exports the currently buffered RGB and Light
+        sensor data to either CSV or Excel format based on the
+        user’s selection.
+
+        Functional Behavior:
+            • Acquires thread-safe copies of sensor buffers.
+            • Opens a file save dialog for format selection.
+            • Supports:
+                - CSV (*.csv)
+                - Excel (*.xlsx)
+            • Writes Light and RGB values to the file.
+            • Replaces zero-only RGB values with 'null'.
+            • Displays success or error status to the user.
+
+        Args:
+            event:
+                wxPython button click event object.
+
+        Returns:
+            None
+        """
         with self.data_lock:
             r_data = self.r_data[:]
             g_data = self.g_data[:]

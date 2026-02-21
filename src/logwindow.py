@@ -3,179 +3,246 @@
 # Module: logwindow.py
 #
 # Description:
-#     view the device log.
+#     View the device log.
 #
 # Author:
-#     Vinay N, MCCI Corporation May 2025
+#     Vinay N, MCCI Corporation February 2026
 #
 # Revision history:
-#     V2.0.0 Mon May 15 2025 01:00:00   Vinay N 
+#     V2.2.0 Fri Feb 2026 20:02:2026   Vinay N
 #       Module created
-
+#
 ##############################################################################
-import wx
-import sys
-from datetime import datetime
-import os
 
-#======================================================================
-# COMPONENTS
-#======================================================================
+# Built-in imports
+import os
+from datetime import datetime
+
+# Third-party imports
+import wx
+
+
+__author__ = "Vinay N"
+__copyright__ = "Copyright 2025, MCCI Corporation"
+__version__ = "2.0.0"
+__status__ = "Development"
+
 
 class LogWindow(wx.Window):
+    """
+    Log display window for device communication messages.
+
+    Provides timestamp option, clear functionality,
+    and export-to-file capability.
+    """
+
     def __init__(self, parent):
-        """Initialize the LogWindow UI components and layout."""
+        """
+        Initialize LogWindow UI components and layout.
+
+        Args:
+            parent:
+                Parent wx window.
+
+        Returns:
+            None
+        """
         super().__init__(parent)
 
-        # Create static box with naming of Log Window
-        sb = wx.StaticBox(self, -1,"Log Window")
+        static_box = wx.StaticBox(self, -1, "Log Window")
+        self.vbox = wx.StaticBoxSizer(static_box, wx.VERTICAL)
 
-        # Create StaticBoxSizer as vertical
-        self.vbox = wx.StaticBoxSizer(sb, wx.VERTICAL)
-        self.cb_timestamp = wx.CheckBox(self, -1, "Timestamp")
-        self.cb_timestamp.SetToolTip(wx.ToolTip("Include timestamp in log messages"))
+        self.cb_timestamp = wx.CheckBox(
+            self, -1, "Timestamp"
+        )
+        self.cb_timestamp.SetToolTip(
+            wx.ToolTip(
+                "Include timestamp in log messages"
+            )
+        )
 
-        self.btn_save = wx.Button(self, -1, "Save",
-                                        size=(60, -1))  
-        self.btn_clear = wx.Button(self, -1, "Clear",
-                                         size=(60, 25))
-        
-        # set tooltip for modeling interval and auto buttons.
-        self.btn_save.SetToolTip(wx.
-                      ToolTip("Save Log content into a text file"))
-        
-        self.btn_clear.SetToolTip(wx.
-                      ToolTip("Clear the Logs"))
-        
-        self.scb = wx.TextCtrl(self, -1, style= wx.TE_MULTILINE | wx.TE_READONLY, size=(-1,-1))
-        self.scb.SetEditable(False)
-        self.scb.SetBackgroundColour((255,255,255))
-        
-        self.hbox = wx.BoxSizer(wx.HORIZONTAL)
+        self.btn_save = wx.Button(
+            self, -1, "Save", size=(60, -1)
+        )
 
-        self.hbox.Add(self.cb_timestamp, 0, flag=wx.RIGHT, border=30)  # Add the checkbox to the layout
-        self.hbox.Add(self.btn_clear, 0, flag=wx.RIGHT ,border = 30)
-        self.hbox.Add(self.btn_save,1 , flag=wx.RIGHT , border = 180)
-        
-        # Bind the button event to handler
-        self.btn_clear.Bind(wx.EVT_BUTTON, self.ClearLogWindow)
-        self.btn_save.Bind(wx.EVT_BUTTON, self.SaveLogWindow)
-        
-        self.szr_top = wx.BoxSizer(wx.VERTICAL)
-        
-        self.szr_top.AddMany([
-            (5,0,0),
-            (self.scb, 1, wx.EXPAND),
-            (5,0,0)
-            ])
-        
-        self.vbox.AddMany([
-            (40,5,0),
-            (self.hbox, 0, wx.ALIGN_LEFT),
-            (10,5,0),
-            (self.szr_top, 1, wx.EXPAND),
-            (0,0,0)
-            ])
-        
+        self.btn_clear = wx.Button(
+            self, -1, "Clear", size=(60, 25)
+        )
+
+        self.btn_save.SetToolTip(
+            wx.ToolTip(
+                "Save log content to a text file"
+            )
+        )
+
+        self.btn_clear.SetToolTip(
+            wx.ToolTip("Clear log messages")
+        )
+
+        self.scb = wx.TextCtrl(
+            self,
+            -1,
+            style=wx.TE_MULTILINE | wx.TE_READONLY
+        )
+
+        self.scb.SetBackgroundColour((255, 255, 255))
+
+        self._create_layout()
+        self._bind_events()
+
+    def _create_layout(self):
+        """
+        Create and arrange UI layout.
+
+        Returns:
+            None
+        """
+        hbox = wx.BoxSizer(wx.HORIZONTAL)
+        hbox.Add(self.cb_timestamp, 0, wx.RIGHT, 30)
+        hbox.Add(self.btn_clear, 0, wx.RIGHT, 30)
+        hbox.Add(self.btn_save, 1, wx.RIGHT, 180)
+
+        szr_top = wx.BoxSizer(wx.VERTICAL)
+        szr_top.Add(self.scb, 1, wx.EXPAND)
+
+        self.vbox.AddSpacer(10)
+        self.vbox.Add(hbox, 0, wx.ALIGN_LEFT)
+        self.vbox.AddSpacer(10)
+        self.vbox.Add(szr_top, 1, wx.EXPAND)
+
         self.SetSizer(self.vbox)
-        self.vbox.Fit(self)
         self.Layout()
-    
+
+    def _bind_events(self):
+        """
+        Bind button events to handlers.
+
+        Returns:
+            None
+        """
+        self.btn_clear.Bind(wx.EVT_BUTTON,
+                            self.clear_log_window)
+        self.btn_save.Bind(wx.EVT_BUTTON,
+                           self.save_log_window)
+
     def log_message(self, message):
-        """Log a message with optional timestamp in the text area."""
+        """
+        Append a log message to the window.
+
+        If timestamp option is enabled, a formatted
+        timestamp is prefixed to the message.
+
+        Args:
+            message:
+                Message string to append.
+
+        Returns:
+            None
+        """
         try:
             if self.cb_timestamp.IsChecked():
-                ct = datetime.now()
-                timestamp = ct.strftime("%Y-%m-%d  %H:%M:%S.%f")
-                # print(timestamp)
-                cstr = f"[{timestamp[:-3]}]  "  # ✅ Only 2 spaces after timestamp
-                # print(cstr)
-                message = f"{cstr}{message}"
-                # print(message)
-            self.scb.AppendText(message + "\n")  # Append line
-        except Exception as e:
-            print(f"Log message error: {e}")
+                current_time = datetime.now()
+                timestamp = current_time.strftime(
+                    "%Y-%m-%d  %H:%M:%S.%f"
+                )
+                message = (
+                    f"[{timestamp[:-3]}]  {message}"
+                )
+
+            self.scb.AppendText(message + "\n")
+
+        except Exception as exc:
+            print(f"Log message error: {exc}")
 
     def log_inline(self, message):
-        """Append a message to the log without a newline."""
+        """
+        Append text without adding a newline.
+
+        Args:
+            message:
+                Message string to append.
+
+        Returns:
+            None
+        """
         try:
-            self.scb.AppendText(message)  # No newline
-        except Exception as e:
-            print(f"Log inline message error: {e}")
+            self.scb.AppendText(message)
+        except Exception as exc:
+            print(f"Log inline error: {exc}")
 
-    def ClearLogWindow(self, e):
+    def clear_log_window(self, event):
         """
-        Event handler for Clear button
-        Clear the data in USB Device Tree View Window
+        Clear all log messages from the window.
 
         Args:
-            self: The self parameter is a reference to the current 
-            insance of the class,and is used to access variables
-            that belongs to the class.
-            e: Type of the event
+            event:
+                wx button event object.
+
         Returns:
             None
         """
-       
         self.scb.SetValue("")
-    
-    def SaveLogWindow(self, e):
+
+    def save_log_window(self, event):
         """
-        Event handler for the save button
-        Save the usb tree view Window content in a file under a directory
+        Save current log content to a file.
 
         Args:
-            self: The self parameter is a reference to the current 
-            instance of the class,and is used to access variables
-            that belongs to the class.
-            e: Type of the event
+            event:
+                wx button event object.
+
         Returns:
             None
         """
-        # Get the content of the control
         content = self.scb.GetValue()
-        self.save_file(content, "*.txt")
-         
-    def save_file (self, contents, extension):
+        self._save_file(content, "*.txt")
+
+    def _save_file(self, contents, extension):
         """
-        Export the LogWindow/USBTreeWindow content to a file
-        Called by LogWindow and USB Tree View Window
+        Save provided contents to a selected file.
 
         Args:
-            self:The self parameter is a reference to the current 
-            instance of the class,and is used to access variables
-            that belongs to the class.
-        Returns: 
-            return- success for file save in directiry
+            contents:
+                Text content to save.
+
+            extension:
+                File extension filter.
+
+        Returns:
+            None
+
+        Raises:
+            OSError:
+                If file cannot be written.
         """
-        # Save a file
-        self.dirname=""
-        dlg = wx.FileDialog(self, "Save as", self.dirname, "", extension, 
-                            wx.FD_SAVE | wx.FD_OVERWRITE_PROMPT)
+        dlg = wx.FileDialog(
+            self,
+            "Save as",
+            "",
+            "",
+            extension,
+            wx.FD_SAVE | wx.FD_OVERWRITE_PROMPT
+        )
+
         if dlg.ShowModal() == wx.ID_OK:
             wx.BeginBusyCursor()
 
-            dirname = dlg.GetDirectory()
-            filename = os.path.join(dirname, dlg.GetFilename())
+            directory = dlg.GetDirectory()
+            filename = os.path.join(
+                directory,
+                dlg.GetFilename()
+            )
 
-            if (os.path.isdir(dirname) and os.access(dirname, os.X_OK | 
-                                                     os.W_OK)):
-                self.dirname = dirname
             try:
-                f = open(filename, 'w')
-                f.write(contents)
-                f.close()
-            except IOError:
-                options = wx.OK | wx.ICON_ERROR
-                dlg_error = wx.MessageDialog(self,
-                                           "Error saving file\n\n" + strerror,
-                                           "Error",
-                                           options)
-                dlg_error.ShowModal()
-                dlg_error.Destroy()
+                with open(filename, "w") as file:
+                    file.write(contents)
+            except OSError as exc:
+                wx.MessageBox(
+                    f"Error saving file:\n\n{exc}",
+                    "Error",
+                    wx.OK | wx.ICON_ERROR
+                )
+
+            wx.EndBusyCursor()
 
         dlg.Destroy()
-
-        if (wx.IsBusy()):
-            wx.EndBusyCursor()
-        return

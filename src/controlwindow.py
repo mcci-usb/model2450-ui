@@ -10,19 +10,26 @@
 #     Vinay N, MCCI Corporation May 2025
 #
 # Revision history:
-#     V2.0.0 Mon May 2025 01:00:00   Vinay N 
+#     V2.0.0 Mon May 2025 01:00:00   Vinay N
 #       Module created
 ##############################################################################
-import wx
-import matplotlib.pyplot as plt
-from matplotlib.backends.backend_wxagg import FigureCanvasWxAgg as FigureCanvas
-import numpy as np
+# Built-in imports
 import csv
 import os
+from datetime import datetime
+
+# Third-party imports
+import wx
+import numpy as np
+import matplotlib.pyplot as plt
+from matplotlib.backends.backend_wxagg import (
+    FigureCanvasWxAgg as FigureCanvas
+)
+import xlsxwriter
+
+# Local application imports
 from wx import FileDialog, FD_SAVE, FD_OVERWRITE_PROMPT
 from uiGlobal import *
-from datetime import datetime
-import xlsxwriter
 
 #======================================================================
 # COMPONENTS
@@ -92,14 +99,20 @@ class PlotPanel(wx.Panel):
 
     def update_plot(self, event):
         """
-        Update the matplotlib plot based on current checkbox selections.
+        Update the RGB and light sensor plot.
 
-        Clears both axes and redraws the RGB and Light data.
-        Each RGB channel (Red, Green, Blue) is plotted on the primary Y-axis.
-        Light data is plotted on the secondary Y-axis (ax2) in orange.
+        This method redraws the matplotlib graph
+        based on the current checkbox selections.
+        RGB values are plotted on the primary axis,
+        and light sensor data is plotted on the
+        secondary axis.
 
         Args:
-            event (wx.Event): The event object triggering the update. Can be None.
+            event:
+                wx event object triggering the update.
+
+        Returns:
+            None
         """
         self.ax.clear()
         self.ax2.clear()
@@ -131,15 +144,54 @@ class PlotPanel(wx.Panel):
         self.canvas.draw()
 
     def on_zoom_in(self, event):
-        """Zoom in by adjusting x and y axis limits."""
+        """
+        Zoom in on the plotted data.
+
+        This method reduces the axis range to
+        provide a closer view of the plotted
+        RGB and light sensor values.
+
+        Args:
+            event:
+                wx button event object.
+
+        Returns:
+            None
+        """
         self._zoom(factor=0.8)
 
     def on_zoom_out(self, event):
-        """Zoom out by adjusting x and y axis limits."""
+        """
+        Zoom out on the plotted data.
+
+        This method increases the axis range to
+        provide a wider view of the plotted
+        RGB and light sensor values.
+
+        Args:
+            event:
+                wx button event object.
+
+        Returns:
+            None
+        """
         self._zoom(factor=1.2)
 
     def _zoom(self, factor):
-        """Zoom helper."""
+        """
+        Apply zoom scaling to plot axes.
+
+        This helper method adjusts both
+        primary and secondary axis limits
+        based on the provided zoom factor.
+
+        Args:
+            factor:
+                Zoom scaling factor.
+
+        Returns:
+            None
+        """
         # Zoom on main axis
         xlim = self.ax.get_xlim()
         ylim = self.ax.get_ylim()
@@ -269,14 +321,29 @@ class ControlPanel(wx.Panel):
 
     def set_device(self, device):
         """
-        Set the device instance for the control panel.
+        Assign device instance to control panel.
 
         Args:
-            device: An object representing the connected device.
+            device:
+                Connected Model2450 device object.
+
+        Returns:
+            None
         """
         self.device = device
     
     def on_only_digits(self, event):
+        """
+        Restrict text input to numeric digits.
+
+        Args:
+            event:
+                wx key event object.
+
+        Returns:
+            None
+        """
+        
         keycode = event.GetKeyCode()
         if keycode < wx.WXK_SPACE or keycode == wx.WXK_DELETE or keycode > 255:
             event.Skip()
@@ -292,10 +359,18 @@ class ControlPanel(wx.Panel):
     
     def on_light_read(self, event):
         """
-        Handle the "Read Light" button press.
+        Read ambient light sensor value.
 
-        Reads ambient light from the device and updates the light text control.
-        Logs the result or any errors.
+        This method sends the read command
+        to the Model2450 device and updates
+        the light display field.
+
+        Args:
+            event:
+                wx button event object.
+
+        Returns:
+            None
         """
         if self.device:
             try:
@@ -321,10 +396,18 @@ class ControlPanel(wx.Panel):
 
     def on_color_read(self, event):
         """
-        Handle the "Read Color" button press.
+        Read RGB color sensor values.
 
-        Reads the RGB color data from the device and displays it.
-        Logs the result or any errors.
+        This method retrieves color data
+        from the Model2450 device and
+        updates the display field.
+
+        Args:
+            event:
+                wx button event object.
+
+        Returns:
+            None
         """
         if self.device:
             try:
@@ -342,9 +425,18 @@ class ControlPanel(wx.Panel):
 
     def on_start(self, event):
         """
-        Start periodic reading using a wx.Timer.
+        Start interval-based sensor acquisition.
 
-        Uses the interval specified in the interval text control.
+        This method starts the timer using
+        the configured interval and begins
+        periodic light and color readings.
+
+        Args:
+            event:
+                wx button event object.
+
+        Returns:
+            None
         """
         if self.device:
             try:
@@ -359,7 +451,17 @@ class ControlPanel(wx.Panel):
 
     def on_stop(self, event):
         """
-        Stop the periodic reading if it is currently running.
+        Stop interval-based sensor acquisition.
+
+        This method stops the running timer
+        and halts periodic data collection.
+
+        Args:
+            event:
+                wx button event object.
+
+        Returns:
+            None
         """
         if self.timer.IsRunning():
             self.timer.Stop()
@@ -367,10 +469,19 @@ class ControlPanel(wx.Panel):
 
     def on_timer(self, event):
         """
-        Timer callback for periodic reading.
+        Handle periodic timer callback.
 
-        Reads light and RGB color data from the device and appends it to the internal dataset.
-        Updates display fields and logs the reading.
+        This method reads light and RGB
+        sensor data, updates UI fields,
+        logs readings, and stores values
+        for plotting and export.
+
+        Args:
+            event:
+                wx timer event object.
+
+        Returns:
+            None
         """
         if self.device:
             try:
@@ -399,9 +510,18 @@ class ControlPanel(wx.Panel):
 
     def on_plot(self, event):
         """
-        Open a plot window to visualize the collected RGB and light sensor data.
+        Open sensor data plotting window.
 
-        Creates a new PlotPanel in a separate frame if not already visible.
+        This method creates and displays
+        the RGB and light plotting frame
+        if not already active.
+
+        Args:
+            event:
+                wx button event object.
+
+        Returns:
+            None
         """
         if self.plot_window is None or not self.plot_window.IsShown():
             self.plot_window = wx.Frame(self, title="RGB and Light Plot", size=(600, 500))
@@ -413,8 +533,18 @@ class ControlPanel(wx.Panel):
     
     def on_save_csv(self, event):
         """
-        Ask the user to choose file format (.xlsx or .csv) and save RGB/Light data.
-        Excel: writes data in one sheet, and shows charts only in second sheet.
+        Export sensor data to file.
+
+        This method allows the user to
+        save collected RGB and light
+        sensor data in XLSX or CSV format.
+
+        Args:
+            event:
+                wx button event object.
+
+        Returns:
+            None
         """
         # import xlsxwriter
 
@@ -532,208 +662,3 @@ class ControlPanel(wx.Panel):
 
             except Exception as e:
                 self.log_window.log_message(f"\nFailed to save file: {e}")
-
-
-            
-    # def on_save_csv(self, event):
-    #     """
-    #     Ask the user to choose file format (.xlsx or .csv) and save RGB/Light data.
-    #     """
-    #     # import xlsxwriter  # Ensure this import exists at top of file if not already
-
-    #     format_dialog = wx.SingleChoiceDialog(
-    #         self,
-    #         "Choose a file format to save:",
-    #         "Save As",
-    #         ["XLSX (Excel)", "CSV"]
-    #     )
-
-    #     if format_dialog.ShowModal() != wx.ID_OK:
-    #         return  # User cancelled
-
-    #     file_type = format_dialog.GetStringSelection()
-    #     wildcard = "Excel files (*.xlsx)|*.xlsx" if "XLSX" in file_type else "CSV files (*.csv)|*.csv"
-
-    #     with FileDialog(self, "Save File", wildcard=wildcard,
-    #                     style=FD_SAVE | FD_OVERWRITE_PROMPT) as fileDialog:
-    #         if fileDialog.ShowModal() == wx.ID_CANCEL:
-    #             return  # User cancelled
-
-    #         path = fileDialog.GetPath()
-    #         r = self.rgb_data.get("R", [])
-    #         g = self.rgb_data.get("G", [])
-    #         b = self.rgb_data.get("B", [])
-    #         light = self.rgb_data.get("Light", [])
-    #         timestamps = getattr(self, "timestamps", [])
-
-    #         min_len = min(len(r), len(g), len(b), len(light), len(timestamps))
-
-    #         try:
-    #             if "XLSX" in file_type:
-    #                 if not path.endswith(".xlsx"):
-    #                     path += ".xlsx"
-    #                 workbook = xlsxwriter.Workbook(path)
-
-    #                 # Sheet 1: Data
-    #                 sheet_main = workbook.add_worksheet("RGB and Light Data")
-    #                 # Sheet 2: For Plotting
-    #                 sheet_plot = workbook.add_worksheet("Plotting")
-
-    #                 # Define formats
-    #                 header_format = workbook.add_format({'bold': True, 'align': 'center', 'valign': 'vcenter'})
-    #                 center_format = workbook.add_format({'align': 'center', 'valign': 'vcenter'})
-
-    #                 # Header row
-    #                 headers = ['Index', 'Timestamp', 'Light', 'Red', 'Green', 'Blue']
-    #                 for col, header in enumerate(headers):
-    #                     sheet_main.write(0, col, header, header_format)
-    #                     sheet_plot.write(0, col, header, header_format)
-
-    #                 # Data rows
-    #                 for i in range(min_len):
-    #                     row = [i, timestamps[i], light[i], r[i], g[i], b[i]]
-    #                     for col, value in enumerate(row):
-    #                         sheet_main.write(i + 1, col, value, center_format)
-    #                         sheet_plot.write(i + 1, col, value, center_format)
-
-    #                 # Column widths
-    #                 for sheet in (sheet_main, sheet_plot):
-    #                     sheet.set_column('A:A', 8)
-    #                     sheet.set_column('B:B', 23)
-    #                     sheet.set_column('C:F', 10)
-
-    #                 # === Insert line chart in Plotting sheet ===
-    #                 chart = workbook.add_chart({'type': 'line'})
-
-    #                 chart.add_series({
-    #                     'name':       'Light',
-    #                     'categories': ['Plotting', 1, 0, min_len, 0],
-    #                     'values':     ['Plotting', 1, 2, min_len, 2],
-    #                     'line':       {'color': 'orange'}
-    #                 })
-    #                 chart.add_series({
-    #                     'name':       'Red',
-    #                     'categories': ['Plotting', 1, 0, min_len, 0],
-    #                     'values':     ['Plotting', 1, 3, min_len, 3],
-    #                     'line':       {'color': 'red'}
-    #                 })
-    #                 chart.add_series({
-    #                     'name':       'Green',
-    #                     'categories': ['Plotting', 1, 0, min_len, 0],
-    #                     'values':     ['Plotting', 1, 4, min_len, 4],
-    #                     'line':       {'color': 'green'}
-    #                 })
-    #                 chart.add_series({
-    #                     'name':       'Blue',
-    #                     'categories': ['Plotting', 1, 0, min_len, 0],
-    #                     'values':     ['Plotting', 1, 5, min_len, 5],
-    #                     'line':       {'color': 'blue'}
-    #                 })
-
-    #                 chart.set_title({'name': 'RGB and Light Sensor Data'})
-    #                 chart.set_x_axis({'name': 'Index'})
-    #                 chart.set_y_axis({'name': 'Sensor Values'})
-    #                 chart.set_legend({'position': 'bottom'})
-
-    #                 # Place chart in Plotting sheet at cell H2
-    #                 sheet_plot.insert_chart('H2', chart, {'x_scale': 2.0, 'y_scale': 1.5})
-
-    #                 workbook.close()
-
-    #             else:
-    #                 if not path.endswith(".csv"):
-    #                     path += ".csv"
-    #                 with open(path, 'w', newline='') as csvfile:
-    #                     writer = csv.writer(csvfile)
-    #                     writer.writerow(['Index', 'Timestamp', 'Light', 'Red', 'Green', 'Blue'])
-    #                     for i in range(min_len):
-    #                         writer.writerow([i, f"'{timestamps[i]}", light[i], r[i], g[i], b[i]])
-
-    #             self.log_window.log_message(f"\nSaved RGB and Light data to: {path}")
-
-    #         except Exception as e:
-    #             self.log_window.log_message(f"\nFailed to save file: {e}")
-
-    
-    # def on_save_csv(self, event):
-    #     """
-    #     Ask the user to choose file format (.xlsx or .csv) and save RGB/Light data.
-    #     """
-    #     # Ask user for file format
-    #     format_dialog = wx.SingleChoiceDialog(
-    #         self,
-    #         "Choose a file format to save:",
-    #         "Save As",
-    #         ["XLSX (Excel)", "CSV"]
-    #     )
-
-    #     if format_dialog.ShowModal() != wx.ID_OK:
-    #         return  # User cancelled
-
-    #     file_type = format_dialog.GetStringSelection()
-    #     wildcard = "Excel files (*.xlsx)|*.xlsx" if "XLSX" in file_type else "CSV files (*.csv)|*.csv"
-
-    #     with FileDialog(self, "Save File", wildcard=wildcard,
-    #                     style=FD_SAVE | FD_OVERWRITE_PROMPT) as fileDialog:
-    #         if fileDialog.ShowModal() == wx.ID_CANCEL:
-    #             return  # User cancelled
-
-    #         path = fileDialog.GetPath()
-    #         r = self.rgb_data.get("R", [])
-    #         g = self.rgb_data.get("G", [])
-    #         b = self.rgb_data.get("B", [])
-    #         light = self.rgb_data.get("Light", [])
-    #         timestamps = getattr(self, "timestamps", [])
-
-    #         min_len = min(len(r), len(g), len(b), len(light), len(timestamps))
-
-    #         try:
-    #             if "XLSX" in file_type:
-    #                 if not path.endswith(".xlsx"):
-    #                     path += ".xlsx"
-    #                 workbook = xlsxwriter.Workbook(path)
-
-    #                 # Sheet 1: Data
-    #                 sheet_main = workbook.add_worksheet("RGB and Light Data")
-    #                 # Sheet 2: Duplicate for plotting
-    #                 sheet_plot = workbook.add_worksheet("Plotting")
-
-    #                 # Define formats
-    #                 header_format = workbook.add_format({'bold': True, 'align': 'center', 'valign': 'vcenter'})
-    #                 center_format = workbook.add_format({'align': 'center', 'valign': 'vcenter'})
-
-    #                 # Header row
-    #                 headers = ['Index', 'Timestamp', 'Light', 'Red', 'Green', 'Blue']
-    #                 for col, header in enumerate(headers):
-    #                     sheet_main.write(0, col, header, header_format)
-    #                     sheet_plot.write(0, col, header, header_format)
-
-    #                 # Data rows
-    #                 for i in range(min_len):
-    #                     row = [i, timestamps[i], light[i], r[i], g[i], b[i]]
-    #                     for col, value in enumerate(row):
-    #                         sheet_main.write(i + 1, col, value, center_format)
-    #                         sheet_plot.write(i + 1, col, value, center_format)
-
-    #                 # Column widths
-    #                 for sheet in (sheet_main, sheet_plot):
-    #                     sheet.set_column('A:A', 8)
-    #                     sheet.set_column('B:B', 23)
-    #                     sheet.set_column('C:F', 10)
-
-    #                 workbook.close()
-
-
-    #             else:
-    #                 if not path.endswith(".csv"):
-    #                     path += ".csv"
-    #                 with open(path, 'w', newline='') as csvfile:
-    #                     writer = csv.writer(csvfile)
-    #                     writer.writerow(['Index', 'Timestamp', 'Light', 'Red', 'Green', 'Blue'])
-    #                     for i in range(min_len):
-    #                         writer.writerow([i, f"'{timestamps[i]}", light[i], r[i], g[i], b[i]])
-
-    #             self.log_window.log_message(f"\nSaved RGB and Light data to: {path}")
-
-    #         except Exception as e:
-    #             self.log_window.log_message(f"\nFailed to save file: {e}")

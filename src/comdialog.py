@@ -8,26 +8,45 @@
 #     Search, view, select and connect module
 #
 # Author:
-#     Vinay N, MCCI Corporation May 2025
+#     Vinay N, MCCI Corporation February 2026
 #
 # Revision history:
-#     V2.0.0 Mon May 2025 01:00:00   Vinay N 
+#     V2.2.0 Fri Feb 2026 20:02:2026   Vinay N
 #       Module created
+#
 ##############################################################################
-import wx
+# Built-in imports
 import os
-from model2450lib import searchmodel
-from model2450lib.model2450 import Model2450
 import time
-from uiGlobal import *
+
+# Third-party imports
+import wx
 import serial
 import serial.tools.list_ports
+
+# Local application imports
+from model2450lib import searchmodel
+from model2450lib.model2450 import Model2450
+from uiGlobal import *
 
 #======================================================================
 # COMPONENTS
 #======================================================================
 
 def send_packets_command_to_all_ports():
+    """
+    Send 'packets' command to all available serial ports.
+
+    This function iterates through detected COM ports
+    and transmits the 'packets' command to prompt
+    Model2450 devices to respond for discovery.
+
+    Args:
+        None
+
+    Returns:
+        None
+    """
     ports = serial.tools.list_ports.comports()
     for port in ports:
         try:
@@ -51,10 +70,18 @@ class ComDialog(wx.Dialog):
     """
     def __init__(self, parent):
         """
-        Initialize the dialog window with UI components.
+        Initialize COM connection dialog window.
+
+        This dialog allows users to search for available
+        Model2450 devices, select a device port, and
+        establish a connection.
 
         Args:
-            parent (wx.Window): The parent frame or panel that opened this dialog.
+            parent:
+                Parent wx window that invoked the dialog.
+
+        Returns:
+            None
         """
         super().__init__(parent, title="Connect Model2450", size=(350, 200))
         self.SetIcon(wx.Icon(os.path.join(os.path.abspath(os.path.dirname(__file__)), "icons", IMG_ICON)))
@@ -80,13 +107,33 @@ class ComDialog(wx.Dialog):
     
     def on_search(self, event):
         """
-        Event handler for the Search button.
+        Search for available Model2450 devices.
 
-        - Scans for available Model2450 devices.
-        - If no devices are found initially, sends the 'packets' command to all ports.
-        - Then scans again and updates the ComboBox with available devices.
+        This method scans for connected devices.
+        If no devices are detected, it sends the
+        'packets' command to all serial ports and
+        retries the discovery process.
+
+        Args:
+            event:
+                wx button event object.
+
+        Returns:
+            None
         """
         def try_search_and_update():
+            """
+            Search devices and update port selection list.
+
+            This helper function queries available
+            Model2450 devices and populates the
+            ComboBox with detected device entries.
+
+            Returns:
+                bool:
+                    True if devices are found,
+                    otherwise False.
+            """
             dev_list = searchmodel.get_models()
             if dev_list and "models" in dev_list and len(dev_list["models"]) > 0:
                 self.port_text.Clear()
@@ -110,11 +157,23 @@ class ComDialog(wx.Dialog):
 
     def on_connect(self, event):
         """
-        Event handler for the Connect button.
+        Connect to the selected Model2450 device.
 
-        Extracts the selected port from the ComboBox,
-        attempts to establish a connection using the Model2450 class,
-        updates the status, and passes the connected device to parent tabs.
+        This method extracts the selected COM port,
+        establishes a device connection, retrieves
+        the serial number, and updates parent UI
+        components with connection status.
+
+        Args:
+            event:
+                wx button event object.
+
+        Returns:
+            None
+
+        Raises:
+            Exception:
+                If device connection fails.
         """
         selection = self.port_text.GetValue()
         if selection:
