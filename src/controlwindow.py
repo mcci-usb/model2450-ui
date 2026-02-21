@@ -7,11 +7,12 @@
 #      To read the Light and Color values and plotting.
 #
 # Author:
-#     Vinay N, MCCI Corporation May 2025
+#     Vinay N, MCCI Corporation February 2026
 #
 # Revision history:
-#     V2.0.0 Mon May 2025 01:00:00   Vinay N
+#     V2.2.0 Fri Feb 2026 20:02:2026   Vinay N
 #       Module created
+#
 ##############################################################################
 # Built-in imports
 import csv
@@ -242,72 +243,113 @@ class ControlPanel(wx.Panel):
 
         self.main_sizer = wx.BoxSizer(wx.VERTICAL)
 
-        # Light control
-        self.light = wx.BoxSizer(wx.HORIZONTAL)
+        # =========================================================
+        # Light
+        # =========================================================
+        self.hb_light = wx.BoxSizer(wx.HORIZONTAL)
+
         self.st_light = wx.StaticText(self, label="Light")
-        self.tc_light = wx.TextCtrl(self, value="00000", size=(85, 25), style=wx.TE_CENTER | wx.TE_READONLY)
+        self.tc_light = wx.TextCtrl(
+            self, value="00000",
+            size=(85, -1),
+            style=wx.TE_CENTER | wx.TE_READONLY
+        )
         self.st_msr = wx.StaticText(self, label="lux")
-        self.btn_light = wx.Button(self, label="Read Light")
+        self.btn_light = wx.Button(self, label="Read Light", size=(90, 25))
 
-        self.light.Add(self.st_light, flag=wx.ALL, border=10)
-        self.light.Add((60, 0))
-        self.light.Add(self.tc_light, flag=wx.ALIGN_CENTER_VERTICAL | wx.ALL, border=5)
-        self.light.Add(self.st_msr, flag=wx.ALIGN_CENTER_VERTICAL | wx.ALL, border=2)
-        self.light.Add(self.btn_light, flag=wx.ALL, border=10)
-        self.main_sizer.Add(self.light, flag=wx.EXPAND)
+        self.hb_light.AddMany([
+            ((20,0), 0),
+            (self.st_light, 0, wx.ALIGN_CENTER_VERTICAL),
+            ((59,0), 0),
+            (self.tc_light, 0, wx.ALIGN_CENTER_VERTICAL),
+            ((8,0), 0),
+            (self.st_msr, 0, wx.ALIGN_CENTER_VERTICAL),
+            ((15,0), 0),
+            (self.btn_light, 0),
+            ((-1,0), 1)
+        ])
 
-        # Color control
-        self.color = wx.BoxSizer(wx.HORIZONTAL)
+        self.main_sizer.Add(self.hb_light, 0, wx.EXPAND | wx.TOP, 10)
+
+        # =========================================================
+        # Color
+        # =========================================================
+        self.hb_color = wx.BoxSizer(wx.HORIZONTAL)
+
         self.st_color = wx.StaticText(self, label="Color (R:G:B)")
-        self.tc_color = wx.TextCtrl(self, value="R:G:B", size=(85, 25), style=wx.TE_CENTER | wx.TE_READONLY)
-        self.btn_color = wx.Button(self, label="Read Color")
+        self.tc_color = wx.TextCtrl(
+            self, value="R:G:B",
+            size=(85, -1),
+            style=wx.TE_CENTER | wx.TE_READONLY
+        )
+        self.btn_color = wx.Button(self, label="Read Color", size=(90, 25))
 
-        self.color.Add(self.st_color, flag=wx.ALL, border=10)
-        self.color.Add((12, 0))
-        self.color.Add(self.tc_color, flag=wx.ALL, border=10)
-        self.color.Add((14, 0))
-        self.color.Add(self.btn_color, flag=wx.ALL, border=10)
-        self.main_sizer.Add(self.color, flag=wx.EXPAND)
+        self.hb_color.AddMany([
+            ((20,0), 0),
+            (self.st_color, 0, wx.ALIGN_CENTER_VERTICAL),
+            ((18,0), 0),
+            (self.tc_color, 0, wx.ALIGN_CENTER_VERTICAL),
+            ((39,0), 0),
+            (self.btn_color, 0),
+            ((-1,0), 1)
+        ])
 
-        # Interval control
-        self.settime = wx.BoxSizer(wx.HORIZONTAL)
+        self.main_sizer.Add(self.hb_color, 0, wx.EXPAND | wx.TOP, 10)
+
+        # =========================================================
+        # Interval
+        # =========================================================
+        self.hb_interval = wx.BoxSizer(wx.HORIZONTAL)
+
         self.st_setint = wx.StaticText(self, label="Interval")
-        self.tc_setint = wx.TextCtrl(self, value="2000", size=(85, 25), style=wx.TE_CENTER | wx.TE_PROCESS_ENTER)
-        self.tc_setint.Bind(wx.EVT_CHAR, self.on_only_digits)
+        self.tc_setint = wx.TextCtrl(
+            self, value="2000",
+            size=(85, -1),
+            style=wx.TE_CENTER | wx.TE_PROCESS_ENTER
+        )
         self.st_ms = wx.StaticText(self, label="ms")
 
-        self.settime.Add(self.st_setint, flag=wx.ALL, border=10)
-        self.settime.Add((44, 0))
-        self.settime.Add(self.tc_setint, flag=wx.ALIGN_CENTER_VERTICAL | wx.ALL, border=5)
-        self.settime.Add(self.st_ms, flag=wx.ALIGN_CENTER_VERTICAL | wx.ALL, border=2)
-        self.main_sizer.Add(self.settime, flag=wx.EXPAND)
+        self.tc_setint.Bind(wx.EVT_CHAR, self.on_only_digits)
 
-        # Buttons
-        self.start_sizer = wx.BoxSizer(wx.HORIZONTAL)
+        self.hb_interval.AddMany([
+            ((20,0), 0),
+            (self.st_setint, 0, wx.ALIGN_CENTER_VERTICAL),
+            ((47,0), 0),
+            (self.tc_setint, 0, wx.ALIGN_CENTER_VERTICAL),
+            ((8,0), 0),
+            (self.st_ms, 0, wx.ALIGN_CENTER_VERTICAL),
+            ((-1,0), 1)
+        ])
+
+        self.main_sizer.Add(self.hb_interval, 0, wx.EXPAND | wx.TOP, 10)
+
+        # =========================================================
+        # Buttons Row (Start / Stop / Plot / Save)
+        # =========================================================
+        self.hb_buttons = wx.BoxSizer(wx.HORIZONTAL)
+
         self.start_btn = wx.Button(self, label="Start", size=(70, 25))
         self.stop_btn = wx.Button(self, label="Stop", size=(70, 25))
-        
-        
-
-
-        self.start_sizer.Add((90, 0))
-        self.start_sizer.AddSpacer(8)  # This will add the 20px gap
-        self.start_sizer.Add(self.start_btn, flag=wx.ALL, border=10)
-        # self.start_sizer.Add(self.plot_btn, flag=wx.ALL, border=10)
-        self.start_sizer.Add(self.stop_btn, flag=wx.ALL, border=10)
-        # self.start_sizer.Add(self.save_csv_btn, flag=wx.ALL, border=10)
-        self.main_sizer.Add(self.start_sizer, flag=wx.EXPAND)
-        
-        self.plot_csv = wx.BoxSizer(wx.HORIZONTAL)
         self.plot_btn = wx.Button(self, label="Plot", size=(70, 25))
-        self.save_csv_btn = wx.Button(self, label="Save File", size=(80, 25))
-        self.plot_csv.Add((100, 0))
-        self.plot_csv.Add(self.plot_btn, flag=wx.ALL, border=10)
-        self.plot_csv.Add(self.save_csv_btn, flag=wx.ALL, border=10)
-        self.main_sizer.Add(self.plot_csv, flag=wx.EXPAND)
+        self.save_csv_btn = wx.Button(self, label="Save File", size=(90, 25))
         
-        
+        self.hb_buttons.AddMany([
+            ((106,0), 0),
+            (self.start_btn, 0, wx.ALIGN_CENTER_VERTICAL),
+            ((8,0), 0),
+            (self.stop_btn, 0, wx.ALIGN_CENTER_VERTICAL),
+            ((8,0), 0),
+            (self.plot_btn, 0, wx.ALIGN_CENTER_VERTICAL),
+            ((8,0), 0),
+            (self.save_csv_btn, 0, wx.ALIGN_CENTER_VERTICAL),
+            ((-1,0), 1)
+        ])
 
+        self.main_sizer.Add(self.hb_buttons, 0, wx.EXPAND | wx.TOP | wx.BOTTOM, 15)
+
+        # =========================================================
+        # Apply Sizer
+        # =========================================================
         self.SetSizer(self.main_sizer)
 
         # Bind events
