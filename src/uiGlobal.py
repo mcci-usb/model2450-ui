@@ -6,79 +6,73 @@
 #     Define all global variables for the entire UI Model2450 App.
 #
 # Author:
-#     Vinay N, MCCI Corporation May 2025
+#     Vinay N, MCCI Corporation February 2026
 #
 # Revision history:
-#     V2.0.0 Mon May 2025 01:00:00   Vinay N 
+#     V2.2.0 Fri Feb 2026 20:02:2026   Vinay N
 #       Module created
-
+#
 ##############################################################################
-# Lib imports
+# Third-party imports
 import wx
+
+# Built-in imports
 import os
+
 
 #======================================================================
 # COMPONENTS
 #======================================================================
 
 DEFAULT_FONT_SIZE = 8
-DEV_2450    = 0
+
+DEV_2450 = 0
+
 BAUDRATE = [115200, 115200, 0, 9600]
 
-DEVICES    = ["2450"]
+DEVICES = ["2450"]
 
 IMG_ICON = "mcci_logo.ico"
 IMG_LOGO = "mcci_logo.png"
 COLOR_IMG = "Color.png"
 MCCI_LOGO = "mcci_logo_about.png"
 
-ID_MENU_FILE_CLOSE  = 1012
-ID_MENU_HELP_ABOUT = 1019
+# Menu IDs
+ID_MENU_FILE_CLOSE = 1012
+ID_MENU_HELP_MODEL2450LIB = 1015
+ID_MENU_HELP_3201 = 1016
 ID_MENU_HELP_WEB = 1017
 ID_MENU_HELP_PORT = 1018
+ID_MENU_HELP_ABOUT = 1019
 ID_MENU_HELP_PDB = 1020
 ID_MENU_HELP_DNC = 1021
+ID_MENU_HELP_2101 = 1026
+ID_MENU_HELP_2301 = 1027
+ID_MENU_HELP_WEB_2 = 1028
+ID_MENU_HELP_PORT_2 = 1029
+ID_MENU_HELP_ABOUT_2 = 1030
+ID_MENU_HELP_2450 = 1031
+
 ID_ABOUT_IMAGE = 1033
 ID_MENU_LOGIN = 1034
-
 EVT_RESULT_ID = 1035
 ID_BTN_DEV_SCAN = 1036
 ID_BTN_ADD = 1037
-# ID_BTN_DEV_SCAN
 ID_BTN_CONNECT = 1038
-
 ID_CONNECT_MODEL_MENU = 1039
-# config_menu
 ID_CONFIG_MENU = 1040
 ID_SET_COLOR_MENU = 1041
-
-ID_MENU_HELP_MODEL2450LIB = 1015
-ID_MENU_HELP_3201 = 1016
-ID_MENU_HELP_2101 = 1026
-ID_MENU_HELP_2301 = 1027
-ID_MENU_HELP_WEB = 1028
-ID_MENU_HELP_PORT = 1029
-ID_MENU_HELP_ABOUT = 1030
-ID_MENU_HELP_2450 = 1031
 
 ID_CONNECT_MODEL = 2020
 ID_DISCONNECT_MODEL = 2021
 ID_CALIBRATION = 2022
 ID_BLOCKFRAMES = 1547
-
 ID_PLOTTING = 1548
 
 ID_BTN_AUTO = 1050
 ID_BTN_CLEAR = 1051
-
 ID_MENU_MODEL_CONNECT = 1052
 ID_MENU_MODEL_DISCONNECT = 1053
-
-# ID_BTN_START = 4010
-# ID_BTN_PLOT = 4020
-# ID_BTN_STOP = 4030
-#   # New ID for the Set button
-
 
 
 mcci_web = "https://mcci.com/"
@@ -94,17 +88,16 @@ VERSION_STR = "V2.1.0"
 
 class NumericValidator(wx.Validator):
     """
-    Validator associated NumericValidator Control.
+    Validator to allow only numeric input in text controls.
     """
     
     def __init__(self):
         """
-        Only digits are allowed in the address.
+        Initialize NumericValidator and bind character event.
 
         Args:
-            self: The self parameter is a reference to the current 
-            instance of the class,and is used to access variables
-            that belongs to the class.
+            None
+
         Returns:
             None
         """
@@ -114,33 +107,30 @@ class NumericValidator(wx.Validator):
 
     def Clone(self, arg=None):
         """
-        Only digits are allowed in the address. 
+        Create a copy of the validator.
 
         Args:
-            self: The self parameter is a reference to the current 
-            instance of the class,and is used to access variables
-            that belongs to the class.
-        Returns:
-            NumericValidator():return True if all characters in the string are
-            numaric charecters    
+            None
 
-        """
-       
+        Returns:
+            NumericValidator:
+                New instance of NumericValidator.
+        """       
         return NumericValidator()
    
     def Validate(self, win):
         """
-        Only digits are allowed in the textcontrol. 
+        Validate that the control contains only digits.
 
         Args:
-            self: The self parameter is a reference to the current 
-            instance of the class,and is used to access variables
-            that belongs to the class.
-            win: window object is created.
+            win:
+                wx window associated with the validator.
+
         Returns:
-           val.isdigit - "True" if all characters in the string are digits.
+            bool:
+                True if all characters are numeric,
+                otherwise False.
         """
-        
         # Returns the window associated with the validator.
         tc  = self.GetWindow()
         val = tc.GetValue()
@@ -148,13 +138,12 @@ class NumericValidator(wx.Validator):
    
     def OnChar(self, evt):
         """
-        all key names and charachters dirctly can use. 
-        
+        Handle key press event and restrict input to digits.
+
         Args:
-            self: The self parameter is a reference to the current 
-            instance of the class,and is used to access variables
-            that belongs to the class.
-            evt:evt handler to display the characters
+            event:
+                wx key event object.
+
         Returns:
             None
         """

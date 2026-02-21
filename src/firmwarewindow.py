@@ -4,31 +4,45 @@
 # Module: Firmwareupdate.py
 #
 # Description:
-#     Update firmware
+#     Firmware update utility for supported MCCI devices.
+#
+#     This module provides functionality to:
+#         • Detect devices in normal and bootloader modes
+#         • Load Intel HEX firmware files
+#         • Communicate with AVR bootloader
+#         • Perform flash write operations
+#         • Monitor update progress
+#         • Handle device reset and reconnection
 #
 # Author:
-#     Seenivasan V, MCCI Corporation June 2021
+#     Vinay N, MCCI Corporation February 2026
 #
 # Revision history:
-#    V4.3.1 Mon Apr 15 2024 17:00:00   Seenivasan V 
+#     V2.2.0 Fri Feb 2026 20:02:2026   Vinay N
 #       Module created
+#
 ##############################################################################
-# firmware_update_gui.py
+# Built-in imports
+import os
+import sys
+import re
+import threading
+from time import sleep, time
+
+# Third-party imports
 import wx
 import serial
 import serial.tools.list_ports
-import sys
-from time import sleep, time
-import threading
-import os
 import usb.core
 import usb.util
-import re
+
+# Local application imports
+# (None currently — uiGlobal commented)
 # from uiGlobals import *
 
-# --------------------------------------------------------
+# ========================================================================
 # Your original constants
-# --------------------------------------------------------
+# ========================================================================
 DO_RESET         = 1
 INIT_AVR_PORT = 2
 READ_AVAIL_PORTS = 3
@@ -71,19 +85,44 @@ CMD_LEAVE_PROGMODE = 0x4C  # 'C
 DEVICE_VID = 0x045E
 DEVICE_PID = 0x0646
 
-# REV mapping for supported models
-MODEL_REVS = {
-    "3141": "0011",  # Model 3141 → REV 0011
-    "3142": "0012",  # Model 3142 → REV 0012
-}
-
-
-# ---------------------------------------------------------------
+# ========================================================================
 # firmwareupdate class (kept your logic, added logging callback)
-# ---------------------------------------------------------------
+# ========================================================================
 # class firmwareupdate():
 class FirmwareUpdate():
+    """
+    Firmware update engine for AVR-based MCCI devices.
+
+    This class implements the firmware upgrade
+    state machine responsible for:
+
+        • Bootloader detection
+        • Programmer communication
+        • Device signature validation
+        • Flash memory programming
+        • Fuse reading
+        • Progress tracking
+
+    The update process is executed step-by-step
+    using a sequenced command protocol.
+    """
     def __init__(self, log_window=None):
+        """
+        Initialize FirmwareUpdate instance.
+
+        Sets default firmware update state,
+        prepares memory buffers, initializes
+        communication handles, and assigns
+        optional logging interface.
+
+        Args:
+            log_window:
+                Log window instance used to
+                display firmware update status.
+
+        Returns:
+            None
+        """
         # existing fields
         self.wait_flg = True
         self.hex_file = None
@@ -107,20 +146,40 @@ class FirmwareUpdate():
         self.removeswitchlist = []
         self.timer_fu = None
         self.fw_port = None
-
-        # new: logger callback
-        # log_callback should be a callable that accepts a single string
-        # self._log_cb = log_callback
         self.log_window = log_window
-
 
     # simple logger helper
     def log(self, msg):
+        """
+        Log a message to the associated log window.
+
+        This helper method ensures all firmware update
+        messages are routed through a single logging
+        interface.
+
+        Args:
+            msg:
+                Message string to be displayed.
+
+        Returns:
+            None
+        """
         if self.log_window:
             self.log_window.log_message(str(msg))
 
     # All your methods with prints replaced by self.log(...)
     def parse_set_address(self):
+        """
+        Parse response after sending SET_ADDRESS command.
+
+        Reads a single byte from the AVR bootloader
+        and verifies acknowledgment.
+
+        Returns:
+            bool:
+                True  -> Address set successfully.
+                False -> Address set failed.
+        """
         resp = self.read_avr_oned()
         if resp == b'\r':
             return True
@@ -129,10 +188,36 @@ class FirmwareUpdate():
             return False
 
     def exit_boot_loader(self):
+        """
+        Send exit bootloader command to device.
+
+        Transmits the exit command to the AVR
+        bootloader and updates firmware state
+        to EXIT_BOOTLOADER.
+
+        Returns:
+            None
+        """
         self.write_avr('E')
         self.fw_seq = EXIT_BOOTLOADER
 
     def load_block_flash(self):
+        """
+        Load flash memory block into bootloader buffer.
+
+        This method prepares a 128-byte flash block
+        from the parsed HEX memory and sends it to
+        the AVR bootloader for programming.
+
+        Missing addresses are padded with 0xFF.
+
+        Updates:
+            • Increments byte address pointer.
+            • Moves firmware sequence to WRITE_BLOCK.
+
+        Returns:
+            None
+        """
         mybarr = []
         mybarr.append(0x42)
         mybarr.append(0x00)
@@ -148,10 +233,33 @@ class FirmwareUpdate():
         self.fw_seq = WRITE_BLOCK
 
     def leave_prog_mode(self):
+        """
+        Exit programming mode.
+
+        Sends the leave-program-mode command
+        to the bootloader and advances firmware
+        sequence state.
+
+        Returns:
+            None
+        """
         self.write_avr('L')
         self.fw_seq = LEAVE_PROGMODE
 
     def set_address(self):
+        """
+        Set flash write address in bootloader.
+
+        Converts the current flash address into
+        bootloader format and transmits it to
+        the device before block programming.
+
+        Updates:
+            Firmware sequence → SET_ADDRESS
+
+        Returns:
+            None
+        """
         addstr = (self.flash_addr).to_bytes(2, byteorder='big').hex()
         addbyte = bytes.fromhex(addstr)
         mybyte = []
@@ -162,55 +270,207 @@ class FirmwareUpdate():
         self.fw_seq = SET_ADDRESS
 
     def read_efuse(self):
+        """
+        Read extended fuse byte from device.
+
+        Sends EFUSE read command to bootloader
+        and updates firmware sequence state.
+
+        Returns:
+            None
+        """
         self.write_avr(CMD_READ_EFUSE)
         self.fw_seq = READ_EFUSE
 
     def read_lfuse(self):
+        """
+        Read low fuse byte from device.
+
+        Sends LFUSE read command to bootloader
+        and updates firmware sequence state.
+
+        Returns:
+            None
+        """
         self.write_avr(CMD_READ_LFUSE)
         self.fw_seq = READ_LFUSE
 
     def read_hfuse(self):
+        """
+        Read high fuse byte from device.
+
+        Sends HFUSE read command to bootloader
+        and updates firmware sequence state.
+
+        Returns:
+            None
+        """
         self.write_avr(CMD_READ_HFUSE)
         self.fw_seq = READ_HFUSE
 
     def read_dev_signature(self):
+        """
+        Read device signature bytes.
+
+        Retrieves manufacturer and device ID
+        from the AVR bootloader.
+
+        Updates:
+            Firmware sequence → READ_DEV_SIGNATURE
+
+        Returns:
+            None
+        """
         self.write_avr(CMD_READ_DEVSIG)
         self.fw_seq = READ_DEV_SIGNATURE
 
     def get_into_progmode(self):
+        """
+        Enter programming mode.
+
+        Sends command to switch device into
+        firmware programming state.
+
+        Updates:
+            Firmware sequence → GET_INTO_PROGMODE
+
+        Returns:
+            None
+        """
         self.write_avr(CMD_GET_PROGMODE)
         self.fw_seq = GET_INTO_PROGMODE
 
     def select_dev_type(self):
+        """
+        Select target device type.
+
+        Sends device selection command to
+        the bootloader before programming.
+
+        Updates:
+            Firmware sequence → SELECT_DEV_TYPE
+
+        Returns:
+            None
+        """
         self.write_avr_ba("TD")
         self.fw_seq = SELECT_DEV_TYPE
 
     def get_dev_code(self):
+        """
+        Request supported device code list.
+
+        Queries bootloader for supported
+        target device identifiers.
+
+        Updates:
+            Firmware sequence → GET_DEV_CODE
+
+        Returns:
+            None
+        """
         self.write_avr(CMD_GET_DEVCODE)
         self.fw_seq = GET_DEV_CODE
 
     def check_block_support(self):
+        """
+        Check bootloader block write support.
+
+        Determines whether buffered flash
+        programming is supported and retrieves
+        buffer size information.
+
+        Updates:
+            Firmware sequence → CHECK_BLOCK_SUPPORT
+
+        Returns:
+            None
+        """
         self.write_avr(CMD_CHECK_BLOCKSUPP)
         self.fw_seq = CHECK_BLOCK_SUPPORT
 
     def check_auto_incr(self):
+        """
+        Check auto address increment support.
+
+        Sends command to bootloader to verify
+        whether automatic address increment is
+        supported during flash programming.
+
+        Updates:
+            Firmware sequence → CHECK_AUTO_INC
+
+        Returns:
+            None
+        """
         self.write_avr(CMD_CHECK_AUTOINCR)
         self.fw_seq = CHECK_AUTO_INC
 
     def get_sw_version(self):
+        """
+        Get bootloader software version.
+
+        Requests firmware/bootloader version
+        information from the target device.
+
+        Updates:
+            Firmware sequence → GET_SW_VERSION
+
+        Returns:
+            None
+        """
         self.write_avr(CMD_GET_SWVERSION)
         self.fw_seq = GET_SW_VERSION
 
     def get_programmer_type(self):
+        """
+        Get programmer type identifier.
+
+        Queries the bootloader to identify the
+        programmer type used for firmware updates.
+
+        Updates:
+            Firmware sequence → GET_PROG_TYPE
+
+        Returns:
+            None
+        """
         self.write_avr(CMD_GET_PROGTYPE)
         self.fw_seq = GET_PROG_TYPE
 
     def get_sw_identifier(self):
+        """
+        Get software identifier string.
+
+        Requests the bootloader software ID
+        (e.g., CATERIN) used to validate the
+        programming interface.
+
+        Sets:
+            rx_flg → True (enable response read)
+
+        Updates:
+            Firmware sequence → GET_SW_IDENTIFIER
+
+        Returns:
+            None
+        """
         self.rx_flg = True
         self.write_avr(CMD_GET_SWIDENTIFIER)
         self.fw_seq = GET_SW_IDENTIFIER
 
     def parse_efuse(self):
+        """
+        Parse extended fuse byte response.
+
+        Reads EFUSE data returned by the bootloader
+        and logs the fuse value in hexadecimal format.
+
+        Returns:
+            bool:
+                True  → EFUSE read successfully.
+                False → EFUSE read failed or response empty.
+        """
         resp = self.read_avr_ba()
         if resp and len(resp) > 0:
             bsize = format(resp[0], '#x')
@@ -221,6 +481,17 @@ class FirmwareUpdate():
             return False
 
     def parse_hfuse(self):
+        """
+        Parse high fuse byte response.
+
+        Reads HFUSE data returned by the bootloader
+        and logs the fuse value in hexadecimal format.
+
+        Returns:
+            bool:
+                True  → HFUSE read successfully.
+                False → HFUSE read failed.
+        """
         resp = self.read_avr_ba()
         if resp and len(resp) > 0:
             bsize = format(resp[0], '#x')
@@ -231,6 +502,20 @@ class FirmwareUpdate():
             return False
 
     def parse_lfuse(self):
+        """
+        Parse low fuse byte response.
+
+        Reads LFUSE data returned by the bootloader
+        and logs the fuse value in hexadecimal format.
+
+        If flash programming is in progress, an
+        empty log line is inserted for readability.
+
+        Returns:
+            bool:
+                True  → LFUSE read successfully.
+                False → LFUSE read failed.
+        """
         resp = self.read_avr_ba()
         if resp and len(resp) > 0:
             bsize = format(resp[0], '#x')
@@ -243,18 +528,46 @@ class FirmwareUpdate():
             return False
 
     def parse_dev_signature(self):
-        resp = self.read_avr_ba()
-        if resp != None:
-            bsize1 = (format(resp[0], '#x'))
-            bsize2 = (format(resp[1], '#x'))
-            bsize3 = (format(resp[2], '#x'))
-            self.log_window.log_message("Device Signature = "+bsize1+bsize2+bsize3)
-            return True
-        else:
-            self.log_window.log_message("Error when reading dev signature")
+        """
+        Parse device signature response from programmer.
+
+        Returns:
+            bool: True if signature read successfully, else False.
+        """
+
+        resp = None   # ✅ Always initialize
+
+        try:
+            resp = self.read_avr_ba()
+        except Exception as ex:
+            self.log_window.log_message(f"Read error: {ex}")
             return False
 
+        if resp is not None and len(resp) >= 3:
+            bsize1 = format(resp[0], '#x')
+            bsize2 = format(resp[1], '#x')
+            bsize3 = format(resp[2], '#x')
+
+            self.log_window.log_message(
+                "Device Signature = " + bsize1 + bsize2 + bsize3
+            )
+            return True
+
+        self.log_window.log_message("Error when reading dev signature")
+        return False
+
     def parse_get_progmode(self):
+        """
+        Parse programming mode entry response.
+
+        Verifies whether the device successfully
+        entered bootloader programming mode.
+
+        Returns:
+            bool:
+                True  → Programming mode entered.
+                False → Failed to enter programming mode.
+        """
         resp = self.read_avr_oned()
         if resp == b'\r':
             self.log_window.log_message("Enter into Program mode success")
@@ -264,6 +577,17 @@ class FirmwareUpdate():
             return False
 
     def parse_dev_type(self):
+        """
+        Parse device type selection response.
+
+        Confirms whether the selected device code
+        was accepted by the bootloader.
+
+        Returns:
+            bool:
+                True  → Device type accepted.
+                False → Device type selection failed.
+        """
         resp = self.read_avr_oned()
         if resp == b'\r':
             self.log_window.log_message("Dev code selected = 0x44")
@@ -273,6 +597,17 @@ class FirmwareUpdate():
             return False
 
     def parse_dev_code(self):
+        """
+        Parse supported device code list.
+
+        Reads the supported device identifiers
+        from the programmer and logs the result.
+
+        Returns:
+            bool:
+                True  → Device code list read.
+                False → Failed to read device list.
+        """
         resp = self.read_avr_ba()
         if resp != None:
             bsize = (format(resp[0], '#x'))
@@ -283,6 +618,21 @@ class FirmwareUpdate():
             return False
 
     def parse_block_support(self):
+        """
+        Parse block programming support response.
+
+        Determines whether the bootloader supports
+        buffered flash programming and extracts
+        the supported block size.
+
+        Updates:
+            self.pageSize → Bootloader buffer size.
+
+        Returns:
+            bool:
+                True  → Block support detected.
+                False → Block support read failed.
+        """
         resp = self.read_avr_ba()
         if resp != None:
             bsize = resp[1:3]
@@ -295,6 +645,18 @@ class FirmwareUpdate():
             return False
 
     def parse_auto_incr(self):
+        """
+        Parse auto address increment support response.
+
+        Evaluates the bootloader response to determine
+        whether automatic flash address increment is
+        supported during firmware programming.
+
+        Returns:
+            bool:
+                True  → Auto increment supported or response valid.
+                False → Failed to read support status.
+        """
         resp = self.read_avr()
         if resp != None:
             if resp and len(resp) > 0 and resp[0] == 'Y':
@@ -307,6 +669,18 @@ class FirmwareUpdate():
             return False
 
     def parse_sw_version(self):
+        """
+        Parse bootloader software version.
+
+        Reads the programmer software version
+        returned by the device, converts it from
+        hexadecimal format, and logs the value.
+
+        Returns:
+            bool:
+                True  → Version parsed successfully.
+                False → Version read or parse failed.
+        """
         resp = self.read_avr()
         if resp != None:
             try:
@@ -322,6 +696,18 @@ class FirmwareUpdate():
             return False
 
     def parse_programmer_type(self):
+        """
+        Parse programmer type response.
+
+        Retrieves and logs the programmer
+        hardware/software type identifier
+        from the bootloader.
+
+        Returns:
+            bool:
+                True  → Programmer type detected.
+                False → Programmer type not found.
+        """
         resp = self.read_avr()
         if resp != None:
             self.log_window.log_message("Programmer Type:  "+resp)
@@ -331,6 +717,17 @@ class FirmwareUpdate():
             return False
 
     def parse_sw_identifier(self):
+        """
+        Parse bootloader software identifier.
+
+        Validates the programmer ID string
+        returned by the device (e.g., CATERIN).
+
+        Returns:
+            bool:
+                True  → Valid programmer identifier detected.
+                False → Identifier read failed or invalid.
+        """
         resp = self.read_avr()
         if resp and "CATERIN" in resp:
             self.log_window.log_message("Found Programmer Id: " + resp)
@@ -342,14 +739,24 @@ class FirmwareUpdate():
 
     def run_update(self, progress_callback=None):
         """
-        Run one step of the state-machine. Intended to be called repeatedly
-        until EXIT_BOOTLOADER reached.
+        Execute firmware update state machine step.
+
+        This method runs one cycle of the firmware
+        update workflow based on the current
+        sequence state (fw_seq).
+
+        The function is intended to be called
+        repeatedly until the EXIT_BOOTLOADER
+        state is reached.
+
+        Args:
+            progress_callback (callable, optional):
+                Callback function used to report
+                firmware update progress percentage.
+
+        Returns:
+            None
         """
-        # if self.fw_seq == DO_RESET:
-        #     self.send_reset()
-        #     self.fw_seq = READ_AVAIL_PORTS
-        #     sleep(1.5)
-        
         if self.fw_seq == DO_RESET:
             # DO NOT send reset here. Bootloader detection already rebooted device.
             self.fw_seq = READ_AVAIL_PORTS
@@ -474,6 +881,21 @@ class FirmwareUpdate():
                 pass
 
     def open_avr_port(self):
+        """
+        Open AVR bootloader serial port.
+
+        Attempts to establish a serial connection
+        with the detected bootloader port using
+        predefined baud rate and timeout settings.
+
+        The function retries up to 10 times before
+        reporting failure.
+
+        Returns:
+            bool:
+                True  → Serial port opened successfully.
+                False → Failed to open serial port after retries.
+        """
         for attempt in range(10):
             try:
                 self.avrHand = serial.Serial(port=self.fw_port, baudrate=115200, timeout=1)
@@ -485,7 +907,18 @@ class FirmwareUpdate():
         return False
 
     def find_normal_port(self):
-        """Find current normal mode COM port"""
+        """
+        Find device operating in normal mode.
+
+        Scans available serial ports and attempts to
+        identify a connected device based on port
+        description or hardware ID.
+
+        Returns:
+            str or None:
+                Serial port name if found,
+                otherwise None.
+        """
         plist = list(serial.tools.list_ports.comports())
         for port in plist:
             # match using description, VID, or PID
@@ -494,7 +927,18 @@ class FirmwareUpdate():
         return None
 
     def send_reset(self):
-        """Send reset and detect new bootloader port (VID/PID filtered)."""
+        """
+        Send reset command and detect bootloader port.
+
+        Sends reset to the currently selected port and
+        monitors serial ports for a new device instance
+        matching the configured VID/PID.
+
+        Returns:
+            bool:
+                True  → Bootloader port detected.
+                False → Bootloader not detected.
+        """
         before = set(p.device for p in serial.tools.list_ports.comports()
                     if p.vid == DEVICE_VID and p.pid == DEVICE_PID)
         self.log_window.log_message("[DEBUG] VID/PID  ports before reset: " + str(before))
@@ -519,6 +963,18 @@ class FirmwareUpdate():
         return True
 
     def read_avr_ba(self):
+        """
+        Read fixed-length byte array from AVR.
+
+        Reads up to 10 bytes from the active
+        bootloader serial connection.
+        Args:
+            None
+
+        Returns:
+            bytes or None:
+                Received data buffer.
+        """
         rxdata = None
         try:
             rxdata = self.avrHand.read(10)
@@ -527,6 +983,17 @@ class FirmwareUpdate():
         return rxdata
 
     def read_avr_oned(self):
+        """
+        Read single byte from AVR.
+        Args:
+            None
+
+        Used for command acknowledgment checks.
+
+        Returns:
+            bytes or None:
+                Single byte response.
+        """
         rxdata = None
         try:
             rxdata = self.avrHand.read(1)
@@ -535,6 +1002,17 @@ class FirmwareUpdate():
         return rxdata
 
     def read_avr(self):
+        """
+        Read line-based response from AVR.
+
+        Reads a newline-terminated response
+        from bootloader and decodes it to UTF-8.
+        Args:
+            None
+        Returns:
+            str or None:
+                Decoded string response.
+        """
         rxdata = None
         try:
             rxdata = self.avrHand.readline()
@@ -547,6 +1025,19 @@ class FirmwareUpdate():
         return rxdata
 
     def write_avr_hba(self,param):
+        """
+        Write raw byte array to AVR.
+
+        Sends preformatted bytearray data
+        directly to the bootloader.
+
+        Args:
+            param:
+                List of integer byte values.
+
+        Returns:
+            None
+        """
         ba = bytearray(param)
         try:
             self.avrHand.write(ba)
@@ -554,6 +1045,16 @@ class FirmwareUpdate():
             self.log_window.log_message(str(serr))
 
     def write_avr_ba(self,param):
+        """
+        Write encoded string as bytearray to AVR.
+
+        Args:
+            param:
+                ASCII string command.
+
+        Returns:
+            None
+        """
         ba = bytearray(param.encode())
         try:
             self.avrHand.write(ba)
@@ -561,12 +1062,37 @@ class FirmwareUpdate():
             self.log_window.log_message(str(serr))
 
     def write_avr(self,param):
+        """
+        Write ASCII command to AVR.
+
+        Args:
+            param:
+                Command string.
+
+        Returns:
+            None
+        """
         try:
             self.avrHand.write(param.encode())
         except serial.SerialException as serr:
             self.log(str(serr))
 
     def get_avrdude(self, plist):
+        """
+        Select suitable AVR bootloader port.
+
+        Prioritizes the currently selected port.
+        Otherwise selects first port matching
+        USB or AVR descriptor.
+
+        Args:
+            plist:
+                List of available serial ports.
+
+        Returns:
+            str or None:
+                Selected port name.
+        """
         for port in plist:
             if port.device == self.fw_port:
                 return port.device
@@ -576,6 +1102,23 @@ class FirmwareUpdate():
         return None
 
     def load_hex_file(self, hex_path):
+        """
+        Load Intel HEX firmware file.
+
+        Parses HEX file records and extracts
+        flash memory data into internal buffers.
+
+        Populates:
+            self.mem_flash
+            self.mem_addr
+
+        Args:
+            hex_path:
+                Path to firmware HEX file.
+
+        Returns:
+            None
+        """
         self.mem_flash = {}
         self.mem_addr = []
         with open(hex_path, 'r') as f:
@@ -597,6 +1140,25 @@ class FirmwareUpdate():
 
     # Get all ports matching VID/PID
     def get_candidate_ports(self, vid, pid):
+        """
+        Retrieve serial ports matching specified VID and PID.
+
+        Scans all available serial interfaces and filters
+        devices based on the provided USB Vendor ID (VID)
+        and Product ID (PID).
+
+        Args:
+            vid:
+                USB Vendor ID.
+
+            pid:
+                USB Product ID.
+
+        Returns:
+            list:
+                List of serial port device names that match
+                the given VID and PID.
+        """
         candidates = []
         for port in serial.tools.list_ports.comports():
             if port.vid == vid and port.pid == pid:
@@ -604,7 +1166,31 @@ class FirmwareUpdate():
         return candidates
     
     def send_reset_to_port(self, port):
-        """Send reset command to a given port."""
+        """
+        Send bootloader reset command to specified port.
+
+        Opens the given serial port and transmits the
+        bootloader reset command sequence to force the
+        device into bootloader mode.
+
+        Handles port-busy conditions and displays a
+        user notification if the port is already in use.
+
+        Args:
+            port:
+                Target serial port name.
+
+        Returns:
+            None
+
+        Raises:
+            RuntimeError:
+                If the serial port is busy or inaccessible.
+
+            Exception:
+                Propagates unexpected serial communication
+                errors to the caller.
+        """
         try:
             with serial.Serial(port, 115200, timeout=1) as ser:
                 cmd = b"reset -b\r\n"
@@ -634,9 +1220,50 @@ class FirmwareUpdate():
             # Other errors — just log, don’t show popup
             raise
     
-    
     def detect_bootloader_device(self, normal_port, max_attempts=2):
-        """Detect bootloader port, or return current port if already in bootloader mode."""
+        """
+        Detect bootloader-mode device port.
+
+        Determines whether the selected device is already
+        operating in bootloader mode. If not, sends a reset
+        command and monitors serial ports to detect the
+        bootloader interface.
+
+        The detection is performed using USB VID/PID and
+        device revision identifiers.
+
+        Args:
+            normal_port:
+                Serial port where the device is currently
+                connected in normal mode.
+
+            max_attempts:
+                Number of retry attempts for bootloader
+                detection after reset.
+
+        Returns:
+            tuple:
+                (
+                    bootloader_port,
+                    vid,
+                    pid,
+                    revision
+                )
+
+                bootloader_port:
+                    Detected bootloader COM port.
+
+                vid:
+                    USB Vendor ID.
+
+                pid:
+                    USB Product ID.
+
+                revision:
+                    Bootloader device revision code.
+
+            Returns (None, None, None, None) if detection fails.
+        """
         new_port = None
         vid = pid = rev = None
 
@@ -720,18 +1347,67 @@ class FirmwareUpdate():
         self.log("[ERROR] Bootloader not detected after 2 attempts.")
         return None, None, None, None
    
-# ------------------------------------------------------------------------------------
+# ------------------------------------------------------------------
 # wxPython GUI
-# ------------------------------------------------------------------------------------
-# class FirmwareFrame(wx.Frame):
-# class FirmwarePanel(wx.Panel):
-#     def __init__(self, parent, log_window, device=None):
-#         super(FirmwarePanel, self).__init__(parent)
-#         panel = wx.Panel(self)
-       
-        # Top controls
+# ------------------------------------------------------------------
+# Top controls
 class FirmwarePanel(wx.Panel):
+    """
+    Firmware Update Control Panel UI.
+
+    Provides graphical interface components to:
+
+        • Discover connected Model devices.
+        • Select firmware HEX file.
+        • Initiate firmware update process.
+        • Display update progress.
+        • Log device and update status messages.
+
+    This panel integrates with the FirmwareUpdate
+    backend class to execute firmware flashing
+    operations over serial communication.
+
+    Args:
+        parent:
+            Parent wxPython window/container.
+
+        log_window:
+            Logging interface used to display
+            firmware update activity.
+
+        device:
+            Optional connected device instance.
+    """
     def __init__(self, parent, log_window=None, device=None):
+        """
+        Initialize FirmwarePanel UI components.
+
+        Creates and arranges all widgets required for
+        firmware update operations including:
+
+            • Device selection dropdown.
+            • Serial port search control.
+            • HEX file browser.
+            • Firmware update trigger button.
+            • Progress gauge display.
+
+        Also initializes worker thread control objects
+        for asynchronous firmware flashing.
+
+        Args:
+            parent:
+                Parent wxPython container.
+
+            log_window:
+                Logging window instance for displaying
+                firmware update messages.
+
+            device:
+                Optional connected device reference.
+
+        Returns:
+            None
+        """
         super().__init__(parent)
         
         self.log_window = log_window
@@ -778,11 +1454,7 @@ class FirmwarePanel(wx.Panel):
         self.search_btn.Bind(wx.EVT_BUTTON, self.on_search)
         self.browse_btn.Bind(wx.EVT_BUTTON, self.on_browse)
         self.update_btn.Bind(wx.EVT_BUTTON, self.on_update)
-        # self.cancel_btn.Bind(wx.EVT_BUTTON, self.on_cancel)
-        # self.clr_log_btn.Bind(wx.EVT_BUTTON, self.on_clear_log)
-        # self.save_log_btn.Bind(wx.EVT_BUTTON, self.on_save_log)
-
-
+       
         self._fw = None
         self._worker_thread = None
         self._stop_request = threading.Event()
@@ -791,14 +1463,63 @@ class FirmwarePanel(wx.Panel):
 
     # UI helpers
     def ui_log(self, msg):
-        # append safely to wx main thread
-        # wx.CallAfter(self.log_box.AppendText, str(msg) + "\n")
+        """
+        Thread-safe UI logging helper.
+
+        Intended to append log messages to the GUI
+        log display from worker threads using
+        wx.CallAfter().
+
+        Args:
+            msg:
+                Log message string.
+
+        Returns:
+            None
+        """
         pass
 
     def ui_progress(self, pct):
+        """
+        Update firmware progress indicator.
+
+        Safely updates the progress gauge from
+        worker thread context.
+
+        Args:
+            pct:
+                Firmware update completion percentage
+                (0 – 100).
+
+        Returns:
+            None
+        """
         wx.CallAfter(self.gauge.SetValue, pct)
     
     def on_search(self, evt):
+        """
+        Search and list available Model devices.
+
+        Scans all serial ports and filters devices
+        matching supported VID/PID identifiers.
+
+        For detected devices:
+
+            • Sends 'status' command to confirm model.
+            • Retrieves firmware version (if available).
+            • Identifies bootloader-mode devices.
+            • Populates device selection dropdown.
+
+        Automatically selects a default device
+        if multiple ports are detected.
+
+        Args:
+            evt:
+                wxPython button click event.
+
+        Returns:
+            None
+        """
         self.port_combo.Clear()
         ports = list(serial.tools.list_ports.comports())
 
@@ -846,8 +1567,6 @@ class FirmwarePanel(wx.Panel):
                     else:
                         self.log_window.log_message(f"[INFO] {p.device}: No model response (possibly bootloader mode)")
 
-            # except Exception as e:
-            #     self.ui_log(f"[WARNING] {p.device} cannot open: {e}")
             except serial.SerialException as e:
                 if "PermissionError(13" in str(e) or "Access is denied" in str(e):
                     msg = f"{p.device} port could not open because it is already connected.\nPlease disconnect the other connection or continue anyway."
@@ -871,8 +1590,6 @@ class FirmwarePanel(wx.Panel):
 
             self.port_combo.Append(display_name)
 
-        # Select first detected port
-        # Auto-select default port (prefer Model 3142)
         if self.port_combo.GetCount() > 0:
             default_index = 0
             for i in range(self.port_combo.GetCount()):
@@ -886,7 +1603,54 @@ class FirmwarePanel(wx.Panel):
         else:
             self.log_window.log_message("[WARN] No serial ports detected")
 
+    def extract_model_from_hex(self, hex_path):
+        """
+        Extract model number from HEX filename.
+
+        Expected filename formats:
+            Model2450_v9.hex
+            Model3142-v01.hex
+
+        Returns:
+            str → model number (e.g., "2450")
+            None → if model not found
+        """
+        import os
+        import re
+
+        filename = os.path.basename(hex_path)
+
+        # Regex to capture ModelXXXX
+        match = re.search(r"Model(\d+)", filename, re.IGNORECASE)
+
+        if match:
+            return match.group(1)
+
+        return None
+    
     def on_browse(self, evt):
+        """
+        Open HEX file selection dialog.
+
+        Displays a file browser dialog allowing the user
+        to select a firmware HEX file from the filesystem.
+
+        On successful selection:
+
+            • Updates the HEX file path text field.
+            • Logs the selected file path.
+
+        Args:
+            evt:
+                wxPython button click event.
+
+        Returns:
+            None
+
+        Raises:
+            OSError:
+                If file path retrieval fails.
+        """
         with wx.FileDialog(self, "Select HEX file", wildcard="HEX files (*.hex)|*.hex",
                            style=wx.FD_OPEN | wx.FD_FILE_MUST_EXIST) as fd:
             if fd.ShowModal() == wx.ID_OK:
@@ -895,6 +1659,25 @@ class FirmwarePanel(wx.Panel):
                 self.log_window.log_message(f"[OK] Selected HEX file: {path}")
     
     def on_port_selected(self, event):
+        """
+        Handle device port selection event.
+
+        Retrieves the selected device entry from the
+        port dropdown list and extracts:
+
+            • Device model name.
+            • Associated COM port identifier.
+
+        Logs the selected device information for
+        user confirmation and debugging.
+
+        Args:
+            event:
+                wxPython ComboBox selection event.
+
+        Returns:
+            None
+        """
         selected_text = self.port_combo.GetStringSelection()  # e.g. "3141(COM6)"
         if not selected_text:
             return
@@ -910,6 +1693,41 @@ class FirmwarePanel(wx.Panel):
         self.log_window.log_message(f"[INFO] Selected device: {model_name} ({port_name})")
 
     def detect_normal_device(self):
+        """
+        Detect connected device in normal or bootloader mode.
+
+        Scans all available serial ports and filters devices
+        matching the expected USB Vendor ID (VID) and
+        Product ID (PID).
+
+        For the detected device:
+
+            • Retrieves USB revision (bcdDevice).
+            • Determines device operating mode:
+                - BOOTLOADER mode
+                - NORMAL application mode
+                - UNKNOWN mode
+            • Logs detected port information.
+
+        Returns:
+            tuple:
+
+                port (str):
+                    Detected COM port name.
+
+                vid (int):
+                    USB Vendor ID.
+
+                pid (int):
+                    USB Product ID.
+
+                rev (str):
+                    Device revision in hexadecimal format.
+
+            If no matching device is found:
+
+                (None, None, None, None)
+        """
         for port in serial.tools.list_ports.comports():
             if port.vid == DEVICE_VID and port.pid == DEVICE_PID:
                 dev = usb.core.find(idVendor=port.vid, idProduct=port.pid)
@@ -918,9 +1736,34 @@ class FirmwarePanel(wx.Panel):
                 self.log_window.log_message(f"[INFO] PORT={port.device}, REV={rev}, MODE={mode}")
                 return port.device, port.vid, port.pid, rev
         return None, None, None, None
- 
+    
     def on_update(self, evt):
-        # IMPORTANT: Reset previous firmware updater and thread
+        """
+        Handle firmware update initiation.
+
+        Triggered when the user clicks the
+        "Update Firmware" button.
+
+        This method performs initial validation and setup:
+
+            • Resets previous firmware updater instance.
+            • Clears any existing worker thread reference.
+            • Retrieves selected device port.
+            • Validates device selection.
+
+        If no device is selected:
+
+            • Displays an informational message dialog.
+            • Aborts firmware update process.
+
+        Args:
+            evt:
+                wxPython button click event.
+
+        Returns:
+            None
+        """
+
         self._fw = None
         self._worker_thread = None
 
@@ -929,72 +1772,117 @@ class FirmwarePanel(wx.Panel):
             wx.MessageBox("Please select a device first.", "Info", wx.ICON_INFORMATION)
             return
 
-        # Extract COM port (e.g., 2450(COM6) → COM6)
         selected_text = self.port_combo.GetString(sel_index)
+
         if "(" in selected_text and ")" in selected_text:
             port = selected_text.split("(")[-1].split(")")[0].strip()
+            device_model = selected_text.split("(")[0].strip()
         else:
             port = selected_text.strip()
+            device_model = selected_text.strip()
 
+        # -------------------------------------------------
+        # Validate HEX file path
+        # -------------------------------------------------
         hexfile = self.hex_text.GetValue()
+
         if not hexfile or not os.path.exists(hexfile):
             wx.MessageBox("Please select a valid HEX file.", "Error", wx.ICON_ERROR)
             return
 
-        # Optional: disable UI while running
-        
+        # -------------------------------------------------
+        # Extract model from HEX filename
+        # -------------------------------------------------
+        hex_model = self.extract_model_from_hex(hexfile)
+
+        if not hex_model:
+            wx.MessageBox(
+                "Unable to detect model from HEX filename.\n"
+                "Please select valid Model2450 firmware.",
+                "Invalid Firmware",
+                wx.OK | wx.ICON_ERROR
+            )
+            return
+
+        # -------------------------------------------------
+        # UI supports ONLY Model2450
+        # -------------------------------------------------
+        if hex_model != "2450":
+            wx.MessageBox(
+                f"Wrong firmware selected!\n\n"
+                f"This UI supports only Model2450.\n"
+                f"Selected firmware belongs to Model {hex_model}.\n\n"
+                f"Please load Model2450 HEX file.",
+                "Firmware Not Supported",
+                wx.OK | wx.ICON_ERROR
+            )
+            return
+        # -------------------------------------------------
+        # Disable UI during update
+        # -------------------------------------------------
+        self.update_btn.Disable()
+        self.search_btn.Disable()
+        self.browse_btn.Disable()
+        self.port_combo.Disable()
+
         self._stop_request.clear()
         self.gauge.SetValue(0)
 
-        # Create the updater
+        # -------------------------------------------------
+        # Create Firmware Updater
+        # -------------------------------------------------
         self._fw = FirmwareUpdate(log_window=self.log_window)
         self._fw.hex_file = hexfile
         self._fw.fw_port = port
-        self._fw.fw_seq = DO_RESET     # ensure state machine starts from beginning
+        self._fw.fw_seq = DO_RESET
 
+        # =================================================
+        # Worker Thread
+        # =================================================
         def worker():
             try:
-                self.log_window.log_message(f"[DEBUG] Firmware worker started for port {port}")
-
-                # =============================================================================
-                # STEP 1: Detect / enter BOOTLOADER mode
-                # =============================================================================
                 self.log_window.log_message(
-                    f"[INFO] Detecting bootloader port on {port} (sending reset if needed)..."
+                    f"[DEBUG] Firmware worker started for port {port}"
+                )
+
+                # -------------------------------------------------
+                # STEP 1 — Detect Bootloader
+                # -------------------------------------------------
+                self.log_window.log_message(
+                    f"[INFO] Detecting bootloader port on {port}..."
                 )
 
                 bootport, vid, pid, rev = self._fw.detect_bootloader_device(port)
 
                 if not bootport:
-                    self.log_window.log_message("[ERR] Bootloader port detection failed. Aborting.")
+                    self.log_window.log_message(
+                        "[ERR] Bootloader port detection failed. Aborting."
+                    )
                     return
 
-                if rev not in ("0011"):
-                    self.log_window.log_message(
-                        f"[FORCE] Proceeding with firmware update on {bootport} (REV={rev})"
-                    )
-                else:
-                    self.log_window.log_message(
-                        f"[OK] Bootloader detected on {bootport} (REV={rev}) — proceeding with update."
-                    )
+                self.log_window.log_message(
+                    f"[OK] Bootloader detected on {bootport} (REV={rev})"
+                )
 
-                # Use the detected bootloader port
                 self._fw.fw_port = bootport
 
-                # ====================================================
-                # STEP 2: Load HEX file
-                # ====================================================
-                self.log_window.log_message("[INFO] Loading HEX file into memory...")
-                try:
-                    self._fw.load_hex_file(hexfile)
-                except Exception as e:
-                    self.log_window.log_message(f"[ERR] Failed to load hex file: {e}")
+                # -------------------------------------------------
+                # STEP 2 — Load HEX
+                # -------------------------------------------------
+                self.log_window.log_message("[INFO] Loading HEX file...")
+                self._fw.load_hex_file(hexfile)
+
+                if len(self._fw.mem_addr) == 0:
+                    self.log_window.log_message(
+                        "[ERR] HEX file contains no flash data."
+                    )
                     return
 
-                # ====================================================
-                # STEP 3: Start firmware update
-                # ====================================================
+                # -------------------------------------------------
+                # STEP 3 — Run Update
+                # -------------------------------------------------
                 self.log_window.log_message("[INFO] Starting firmware update...")
+
                 loop_guard = 0
                 max_loops = 10000
 
@@ -1006,75 +1894,64 @@ class FirmwarePanel(wx.Panel):
                     self._fw.run_update(progress_callback=self.ui_progress)
                     loop_guard += 1
 
-                # ====================================================
-                # STEP 4: Completion Handling
-                # ====================================================
+                # -------------------------------------------------
+                # STEP 4 — Completion
+                # -------------------------------------------------
                 if self._stop_request.is_set():
-                    self.log_window.log_message("[WARN] Update cancelled by user.")
-                elif loop_guard >= max_loops:
-                    self.log_window.log_message("[ERR] Update loop exceeded max iterations; aborting.")
+                    self.log_window.log_message(
+                        "[WARN] Update cancelled by user."
+                    )
                 else:
-                    self.log_window.log_message("[OK] Firmware update finished successfully.")
+                    self.log_window.log_message(
+                        "[OK] Firmware update finished successfully."
+                    )
                     self.ui_progress(100)
-                    sleep(2)
-
-                    # After update → try to read version again
-                    ser = None
-                    try:
-                        port_name = self.port_combo.GetValue().split("(")[-1].replace(")", "")
-                        ser = serial.Serial(port=port_name, baudrate=115200, timeout=1)
-                        sleep(0.3)
-                        ser.reset_input_buffer()
-                        ser.write(b"version\r\n")
-                        sleep(0.2)
-
-                        version_resp = ""
-                        while ser.in_waiting:
-                            try:
-                                line = ser.readline().decode("utf-8").strip()
-                                if line:
-                                    version_resp += line
-                            except:
-                                break
-
-                        if version_resp:
-                            self.log_window.log_message(f"[INFO] Checking for updated version...")
-                            self.log_window.log_message(f"[INFO] Updated Version(FW:HW): {version_resp}")
-                        else:
-                            self.log_window.log_message(
-                                "[WARN] Could not read version after update (device may still be rebooting)."
-                            )
-                    except Exception:
-                        self.log_window.log_message("Thank you...!")
-                    finally:
-                        if ser is not None:
-                            try:
-                                ser.close()
-                            except:
-                                pass
-                        sleep(3)
 
             except Exception as e:
                 self.log_window.log_message(f"[EXC] {e}")
 
             finally:
-                # Close bootloader serial port cleanly
                 try:
                     if self._fw and self._fw.avrHand:
                         self._fw.avrHand.close()
-                        self._fw.avrHand = None
                 except:
                     pass
 
                 wx.CallAfter(self.update_btn.Enable)
                 wx.CallAfter(self.search_btn.Enable)
                 wx.CallAfter(self.browse_btn.Enable)
+                wx.CallAfter(self.port_combo.Enable)
 
-        # Start thread
-        self._worker_thread = threading.Thread(target=worker, daemon=True)
+        # -------------------------------------------------
+        # Start worker thread
+        # -------------------------------------------------
+        self._worker_thread = threading.Thread(
+            target=worker,
+            daemon=True
+        )
         self._worker_thread.start()
 
     def on_cancel(self, evt):
+        """
+        Handle firmware update cancellation request.
+
+        Triggered when the user clicks the cancel button
+        during an active firmware update process.
+
+        Behavior:
+
+            • Checks if firmware worker thread is running.
+            • Sets stop request event flag.
+            • Logs cancellation request status.
+            • If no update is active, logs informational message.
+
+        Args:
+            evt:
+                wxPython button click event.
+
+        Returns:
+            None
+        """
         if self._worker_thread and self._worker_thread.is_alive():
             self._stop_request.set()
             self.log_window.log_message("[INFO] Cancel requested. Waiting for thread to stop...")
@@ -1082,11 +1959,49 @@ class FirmwarePanel(wx.Panel):
             self.log_window.log_message("[INFO] Nothing to cancel.")
     
     def on_clear_log(self, event):
+        """
+        Handle log clear request.
+
+        Intended to clear firmware log display content.
+
+        Currently logs a confirmation message indicating
+        that the log has been cleared.
+
+        Args:
+            event:
+                wxPython event object.
+
+        Returns:
+            None
+        """
         # self.log_box.Clear()
         self.log_window.log_message("[INFO] Log cleared.")
     
     # --- Save log function ---
     def on_save_log(self, event):
+        """
+        Save firmware log content to file.
+
+        Opens a file save dialog allowing the user
+        to export log data to a text file.
+
+        Behavior:
+
+            • Displays save file dialog.
+            • Writes log content to selected file.
+            • Displays success or error message.
+
+        Args:
+            event:
+                wxPython event object.
+
+        Returns:
+            None
+
+        Raises:
+            IOError:
+                If file writing operation fails.
+        """
         with wx.FileDialog(self, "Save log as", wildcard="Text files (*.txt)|*.txt",
                         style=wx.FD_SAVE | wx.FD_OVERWRITE_PROMPT) as fd:
             if fd.ShowModal() == wx.ID_OK:

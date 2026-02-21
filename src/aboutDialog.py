@@ -7,14 +7,17 @@
 #      Dialog to display copyright information
 #
 # Author:
-#     Vinay N, MCCI Corporation May 2025
+#     Vinay N, MCCI Corporation February 2026
 #
 # Revision history:
-#     V2.0.0 Mon May 2025 01:00:00   Vinay N 
+#     V2.2.0 Fri Feb 2026 20:02:2026   Vinay N
 #       Module created
+#
 ##############################################################################
+# Third-party imports
 import wx
 
+# Local application imports
 from uiGlobal import *
 
 #======================================================================

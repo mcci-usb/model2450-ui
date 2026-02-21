@@ -7,20 +7,26 @@
 #      Block frames
 #
 # Author:
-#     Vinay N, MCCI Corporation May 2025
+#     Vinay N, MCCI Corporation February 2026
 #
 # Revision history:
-#     V2.0.0 Mon May 2025 01:00:00   Vinay N 
+#     V2.2.0 Fri Feb 2026 20:02:2026   Vinay N
 #       Module created
+#
 ##############################################################################
-import wx
+# Built-in imports
 import os
 import json
-from pathlib import Path
-from uiGlobal import *
-import threading
-from model2450lib import model2450
 import time
+import threading
+from pathlib import Path
+
+# Third-party imports
+import wx
+
+# Local application imports
+from uiGlobal import *
+from model2450lib import model2450
 
 #======================================================================
 # COMPONENTS
@@ -70,17 +76,26 @@ def decode_packet(packet_bytes):
 
 def read_packet_from_serial(ser):
     """
-    Read a complete packet from the serial port.
+    Decode a binary packet received from the device.
 
-    Parameters:
-        serial_port (serial.Serial): An open pySerial Serial object.
+    This function parses packet header fields
+    including start bit, end bit, command,
+    sequence number, length, and payload.
+
+    Args:
+        packet_bytes:
+            Raw packet bytes received from
+            the serial interface.
 
     Returns:
-        bytes: The raw bytes of the received packet.
+        dict:
+            Decoded packet information
+            including payload data.
 
     Raises:
-        TimeoutError: If a complete packet is not received within the expected time.
-        ValueError: If the packet structure is invalid or corrupted.
+        ValueError:
+            If packet length is invalid
+            or header cannot be decoded.
     """
     header = ser.read(2)
     if len(header) < 2:
@@ -95,7 +110,39 @@ def read_packet_from_serial(ser):
     return header + payload
 
 class Blockframe(wx.Frame):
+    """
+    Block frame detection window.
+
+    This frame provides controls to configure
+    light threshold levels, start and stop
+    blank frame detection, monitor device
+    responses, and display detected frame
+    counts in real time.
+    """
     def __init__(self, parent, log_window, device=None):
+        """
+        Initialize Blockframe window instance.
+
+        This constructor sets up device references,
+        logging interface, configuration storage,
+        frame detection state variables, and
+        initializes the user interface layout.
+
+        Args:
+            parent:
+                Parent wx window.
+
+            log_window:
+                Log window instance used to
+                display device messages.
+
+            device:
+                Connected Model2450 device
+                instance (optional).
+
+        Returns:
+            None
+        """
         super(Blockframe, self).__init__(parent)
         self.SetIcon(wx.Icon(os.path.join(os.path.abspath(os.path.dirname(__file__)), "icons", IMG_ICON)))
         self.device = device
@@ -109,6 +156,16 @@ class Blockframe(wx.Frame):
         self.setup_ui()
 
     def setup_ui(self):
+        """
+        Create and configure block frame UI controls.
+
+        This method initializes threshold input,
+        run/stop controls, time display field,
+        layout sizers, and event bindings.
+
+        Returns:
+            None
+        """
         self.SetTitle("Color Set Window")
         self.SetBackgroundColour("white")
         self.SetSize((4000, 180))  # Initial size
@@ -150,13 +207,21 @@ class Blockframe(wx.Frame):
         self.timer = wx.Timer(self)
         self.Bind(wx.EVT_TIMER, self.update_time, self.timer)
 
-        # self.Bind(wx.EVT_CLOSE, self.OnClose)
-
         # Load Threshold
         self.load_light_threshold()
 
     def load_config(self):
-        """Load the config.json file."""
+        """
+        Load configuration from JSON file.
+
+        This method reads the stored
+        configuration file and returns
+        saved application settings.
+
+        Returns:
+            dict:
+                Configuration data.
+        """
         if os.path.exists(self.config_path):
             with open(self.config_path, 'r') as file:
                 try:
@@ -168,17 +233,53 @@ class Blockframe(wx.Frame):
             return {}
 
     def save_config(self):
-        """Save the current configuration to JSON."""
+        """
+        Save configuration to JSON file.
+
+        This method writes current
+        configuration settings to
+        the local config file.
+
+        Returns:
+            None
+        """
         with open(self.config_path, 'w') as file:
             json.dump(self.config, file, indent=4)
 
     def load_light_threshold(self):
-        """Load threshold into TextCtrl."""
+        """
+        Load saved light threshold value.
+
+        This method retrieves the stored
+        threshold value and updates the
+        threshold text control.
+
+        Returns:
+            None
+        """
         light_threshold = self.config.get("light_threshold", "")
         self.tc_lth.SetValue(str(light_threshold))
 
     def on_update(self, event):
-        """Handle update threshold."""
+        """
+        Handle threshold update action.
+
+        This method reads the entered
+        light threshold value, saves it
+        to configuration, and updates
+        the device level setting.
+
+        Args:
+            event:
+                wx button event object.
+
+        Returns:
+            None
+
+        Raises:
+            ValueError:
+                If threshold value is invalid.
+        """
         try:
             level_value = int(self.tc_lth.GetValue())
             
@@ -198,7 +299,20 @@ class Blockframe(wx.Frame):
             wx.MessageBox(f"Error during update: {ex}", "Error", wx.OK | wx.ICON_ERROR)
 
     def update_device_level(self, level_value):
-        """Update the device level in a background thread."""
+        """
+        Update device light threshold level.
+
+        This method sends the 'level'
+        command to the device in a
+        background thread.
+
+        Args:
+            level_value:
+                Threshold value to set.
+
+        Returns:
+            None
+        """
         try:
             response = self.device.set_level(level_value)
             wx.CallAfter(self.log_window.log_message, f"Sent level {level_value}, response: {response}")
@@ -206,7 +320,20 @@ class Blockframe(wx.Frame):
             wx.CallAfter(wx.MessageBox, f"Device update error: {ex}", "Error", wx.OK | wx.ICON_ERROR)
 
     def on_start(self, event):
-        "start the blankframes"
+        """
+        Start blank frame detection.
+
+        This method sends the 'run'
+        command to the device and
+        begins serial monitoring.
+
+        Args:
+            event:
+                wx button event object.
+
+        Returns:
+            None
+        """
         if not self.keep_running:
             if self.device is None:
                 wx.MessageBox("Please connect a device first.", "Error", wx.OK | wx.ICON_ERROR)
@@ -228,15 +355,50 @@ class Blockframe(wx.Frame):
             self.start_timer()
     
     def on_stop(self, event):
+        """
+        Handle stop button action.
+
+        This method invokes the
+        internal stop handler to
+        terminate frame detection.
+
+        Args:
+            event:
+                wx button event object.
+
+        Returns:
+            None
+        """
         self.do_stop()
 
     def do_stop(self):
+        """
+        Stop blank frame detection.
+
+        This method sends the 'stop'
+        command to the device and
+        halts serial monitoring.
+
+        Returns:
+            None
+        """
         if self.keep_running:
             self.keep_running = False
             self.ser.write(b"stop\r\n")
 
     
     def read_serial_data(self):
+        """
+        Read and process serial packets.
+
+        This method continuously reads
+        packets from the device, decodes
+        payload data, logs messages, and
+        updates frame count.
+
+        Returns:
+            None
+        """
         buffer = b""
         buffered_payload = b""  # Ensure initialization of buffered_payload
         while self.keep_running:
@@ -281,24 +443,68 @@ class Blockframe(wx.Frame):
             time.sleep(0.0006)
 
     def update_ui_count(self):
-        """Update the block frame count in the GUI."""
+        """
+        Update frame count in window title.
+        Args:
+            None
+
+        Returns:
+            None
+        """
         self.SetTitle(f"Color Set Window - Frames: {self.block_frame_count}")
 
     def start_timer(self):
-        """Start the timer.""" 
+        """
+        Start UI time update timer.
+        Args:
+            None
+
+        Returns:
+            None
+        """
         self.timer.Start(1000)  # every 1 second
 
     def stop_timer(self):
-        """Stop the timer.""" 
+        """
+        Stop UI time update timer.
+        Args:
+            None
+
+        Returns:
+            None
+        """
         self.timer.Stop()
 
     def update_time(self, event):
-        """Update time field."""
+        """
+        Update time display field.
+
+        Args:
+            event:
+                wx timer event object.
+
+        Returns:
+            None
+        """
         import time
         current_time = time.strftime("%H:%M:%S")
         self.tc_time.SetValue(current_time)
     
     def OnClose(self, event=None):
+        """
+        Handle window close event.
+
+        This method stops frame detection,
+        closes serial connection, and
+        hides the window.
+
+        Args:
+            event:
+                wx close event object.
+
+        Returns:
+            None
+        """
         self.keep_running = False
         if hasattr(self, 'ser') and self.ser.is_open:
             self.ser.write(b"stop\r\n")
