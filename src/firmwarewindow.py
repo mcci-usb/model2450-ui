@@ -85,12 +85,6 @@ CMD_LEAVE_PROGMODE = 0x4C  # 'C
 DEVICE_VID = 0x045E
 DEVICE_PID = 0x0646
 
-# REV mapping for supported models
-MODEL_REVS = {
-    "3141": "0011",  # Model 3141 → REV 0011
-    "3142": "0012",  # Model 3142 → REV 0012
-}
-
 # ========================================================================
 # firmwareupdate class (kept your logic, added logging callback)
 # ========================================================================
@@ -1226,7 +1220,6 @@ class FirmwareUpdate():
             # Other errors — just log, don’t show popup
             raise
     
-    
     def detect_bootloader_device(self, normal_port, max_attempts=2):
         """
         Detect bootloader-mode device port.
@@ -1354,9 +1347,9 @@ class FirmwareUpdate():
         self.log("[ERROR] Bootloader not detected after 2 attempts.")
         return None, None, None, None
    
-# ------------------------------------------------------------------------------------
+# ------------------------------------------------------------------
 # wxPython GUI
-# ------------------------------------------------------------------------------------       
+# ------------------------------------------------------------------
 # Top controls
 class FirmwarePanel(wx.Panel):
     """
@@ -1610,6 +1603,31 @@ class FirmwarePanel(wx.Panel):
         else:
             self.log_window.log_message("[WARN] No serial ports detected")
 
+    def extract_model_from_hex(self, hex_path):
+        """
+        Extract model number from HEX filename.
+
+        Expected filename formats:
+            Model2450_v9.hex
+            Model3142-v01.hex
+
+        Returns:
+            str → model number (e.g., "2450")
+            None → if model not found
+        """
+        import os
+        import re
+
+        filename = os.path.basename(hex_path)
+
+        # Regex to capture ModelXXXX
+        match = re.search(r"Model(\d+)", filename, re.IGNORECASE)
+
+        if match:
+            return match.group(1)
+
+        return None
+    
     def on_browse(self, evt):
         """
         Open HEX file selection dialog.
@@ -1718,7 +1736,7 @@ class FirmwarePanel(wx.Panel):
                 self.log_window.log_message(f"[INFO] PORT={port.device}, REV={rev}, MODE={mode}")
                 return port.device, port.vid, port.pid, rev
         return None, None, None, None
- 
+    
     def on_update(self, evt):
         """
         Handle firmware update initiation.
@@ -1745,7 +1763,7 @@ class FirmwarePanel(wx.Panel):
         Returns:
             None
         """
-        # IMPORTANT: Reset previous firmware updater and thread
+
         self._fw = None
         self._worker_thread = None
 
@@ -1754,97 +1772,117 @@ class FirmwarePanel(wx.Panel):
             wx.MessageBox("Please select a device first.", "Info", wx.ICON_INFORMATION)
             return
 
-        # Extract COM port (e.g., 2450(COM6) → COM6)
         selected_text = self.port_combo.GetString(sel_index)
+
         if "(" in selected_text and ")" in selected_text:
             port = selected_text.split("(")[-1].split(")")[0].strip()
+            device_model = selected_text.split("(")[0].strip()
         else:
             port = selected_text.strip()
+            device_model = selected_text.strip()
 
+        # -------------------------------------------------
+        # Validate HEX file path
+        # -------------------------------------------------
         hexfile = self.hex_text.GetValue()
+
         if not hexfile or not os.path.exists(hexfile):
             wx.MessageBox("Please select a valid HEX file.", "Error", wx.ICON_ERROR)
             return
 
-        # Optional: disable UI while running
-        
+        # -------------------------------------------------
+        # Extract model from HEX filename
+        # -------------------------------------------------
+        hex_model = self.extract_model_from_hex(hexfile)
+
+        if not hex_model:
+            wx.MessageBox(
+                "Unable to detect model from HEX filename.\n"
+                "Please select valid Model2450 firmware.",
+                "Invalid Firmware",
+                wx.OK | wx.ICON_ERROR
+            )
+            return
+
+        # -------------------------------------------------
+        # UI supports ONLY Model2450
+        # -------------------------------------------------
+        if hex_model != "2450":
+            wx.MessageBox(
+                f"Wrong firmware selected!\n\n"
+                f"This UI supports only Model2450.\n"
+                f"Selected firmware belongs to Model {hex_model}.\n\n"
+                f"Please load Model2450 HEX file.",
+                "Firmware Not Supported",
+                wx.OK | wx.ICON_ERROR
+            )
+            return
+        # -------------------------------------------------
+        # Disable UI during update
+        # -------------------------------------------------
+        self.update_btn.Disable()
+        self.search_btn.Disable()
+        self.browse_btn.Disable()
+        self.port_combo.Disable()
+
         self._stop_request.clear()
         self.gauge.SetValue(0)
 
-        # Create the updater
+        # -------------------------------------------------
+        # Create Firmware Updater
+        # -------------------------------------------------
         self._fw = FirmwareUpdate(log_window=self.log_window)
         self._fw.hex_file = hexfile
         self._fw.fw_port = port
-        self._fw.fw_seq = DO_RESET     # ensure state machine starts from beginning
+        self._fw.fw_seq = DO_RESET
 
+        # =================================================
+        # Worker Thread
+        # =================================================
         def worker():
-            """
-            Background firmware update execution thread.
-
-            This nested worker function runs the complete firmware
-            update workflow in a separate thread to prevent blocking
-            the wxPython UI main loop.
-
-            Functional Flow:
-
-                1. Logs worker thread start.
-                2. Detects or forces device into Bootloader mode.
-                3. Identifies Bootloader COM port.
-                4. Loads HEX firmware file into memory.
-
-            Args:
-                None
-
-            Returns:
-                None
-
-            Raises:
-                Exception:
-                    Any unhandled firmware update exception is caught
-                    and logged to the Log Window.
-            """
             try:
-                self.log_window.log_message(f"[DEBUG] Firmware worker started for port {port}")
-
-                # =============================================================================
-                # STEP 1: Detect / enter BOOTLOADER mode
-                # =============================================================================
                 self.log_window.log_message(
-                    f"[INFO] Detecting bootloader port on {port} (sending reset if needed)..."
+                    f"[DEBUG] Firmware worker started for port {port}"
+                )
+
+                # -------------------------------------------------
+                # STEP 1 — Detect Bootloader
+                # -------------------------------------------------
+                self.log_window.log_message(
+                    f"[INFO] Detecting bootloader port on {port}..."
                 )
 
                 bootport, vid, pid, rev = self._fw.detect_bootloader_device(port)
 
                 if not bootport:
-                    self.log_window.log_message("[ERR] Bootloader port detection failed. Aborting.")
+                    self.log_window.log_message(
+                        "[ERR] Bootloader port detection failed. Aborting."
+                    )
                     return
 
-                if rev not in ("0011"):
-                    self.log_window.log_message(
-                        f"[FORCE] Proceeding with firmware update on {bootport} (REV={rev})"
-                    )
-                else:
-                    self.log_window.log_message(
-                        f"[OK] Bootloader detected on {bootport} (REV={rev}) — proceeding with update."
-                    )
+                self.log_window.log_message(
+                    f"[OK] Bootloader detected on {bootport} (REV={rev})"
+                )
 
-                # Use the detected bootloader port
                 self._fw.fw_port = bootport
 
-                # ====================================================
-                # STEP 2: Load HEX file
-                # ====================================================
-                self.log_window.log_message("[INFO] Loading HEX file into memory...")
-                try:
-                    self._fw.load_hex_file(hexfile)
-                except Exception as e:
-                    self.log_window.log_message(f"[ERR] Failed to load hex file: {e}")
+                # -------------------------------------------------
+                # STEP 2 — Load HEX
+                # -------------------------------------------------
+                self.log_window.log_message("[INFO] Loading HEX file...")
+                self._fw.load_hex_file(hexfile)
+
+                if len(self._fw.mem_addr) == 0:
+                    self.log_window.log_message(
+                        "[ERR] HEX file contains no flash data."
+                    )
                     return
 
-                # ====================================================
-                # STEP 3: Start firmware update
-                # ====================================================
+                # -------------------------------------------------
+                # STEP 3 — Run Update
+                # -------------------------------------------------
                 self.log_window.log_message("[INFO] Starting firmware update...")
+
                 loop_guard = 0
                 max_loops = 10000
 
@@ -1856,72 +1894,41 @@ class FirmwarePanel(wx.Panel):
                     self._fw.run_update(progress_callback=self.ui_progress)
                     loop_guard += 1
 
-                # ====================================================
-                # STEP 4: Completion Handling
-                # ====================================================
+                # -------------------------------------------------
+                # STEP 4 — Completion
+                # -------------------------------------------------
                 if self._stop_request.is_set():
-                    self.log_window.log_message("[WARN] Update cancelled by user.")
-                elif loop_guard >= max_loops:
-                    self.log_window.log_message("[ERR] Update loop exceeded max iterations; aborting.")
+                    self.log_window.log_message(
+                        "[WARN] Update cancelled by user."
+                    )
                 else:
-                    self.log_window.log_message("[OK] Firmware update finished successfully.")
+                    self.log_window.log_message(
+                        "[OK] Firmware update finished successfully."
+                    )
                     self.ui_progress(100)
-                    sleep(2)
-
-                    # After update → try to read version again
-                    ser = None
-                    try:
-                        port_name = self.port_combo.GetValue().split("(")[-1].replace(")", "")
-                        ser = serial.Serial(port=port_name, baudrate=115200, timeout=1)
-                        sleep(0.3)
-                        ser.reset_input_buffer()
-                        ser.write(b"version\r\n")
-                        sleep(0.2)
-
-                        version_resp = ""
-                        while ser.in_waiting:
-                            try:
-                                line = ser.readline().decode("utf-8").strip()
-                                if line:
-                                    version_resp += line
-                            except:
-                                break
-
-                        if version_resp:
-                            self.log_window.log_message(f"[INFO] Checking for updated version...")
-                            self.log_window.log_message(f"[INFO] Updated Version(FW:HW): {version_resp}")
-                        else:
-                            self.log_window.log_message(
-                                "[WARN] Could not read version after update (device may still be rebooting)."
-                            )
-                    except Exception:
-                        self.log_window.log_message("Thank you...!")
-                    finally:
-                        if ser is not None:
-                            try:
-                                ser.close()
-                            except:
-                                pass
-                        sleep(3)
 
             except Exception as e:
                 self.log_window.log_message(f"[EXC] {e}")
 
             finally:
-                # Close bootloader serial port cleanly
                 try:
                     if self._fw and self._fw.avrHand:
                         self._fw.avrHand.close()
-                        self._fw.avrHand = None
                 except:
                     pass
 
                 wx.CallAfter(self.update_btn.Enable)
                 wx.CallAfter(self.search_btn.Enable)
                 wx.CallAfter(self.browse_btn.Enable)
+                wx.CallAfter(self.port_combo.Enable)
 
-        # Start thread
-        self._worker_thread = threading.Thread(target=worker, daemon=True)
+        # -------------------------------------------------
+        # Start worker thread
+        # -------------------------------------------------
+        self._worker_thread = threading.Thread(
+            target=worker,
+            daemon=True
+        )
         self._worker_thread.start()
 
     def on_cancel(self, evt):
