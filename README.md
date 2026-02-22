@@ -1,5 +1,8 @@
 # model2450-ui
-A cross functional User Interface application to control the Model 2450 Brightness and Color kit
+
+A wxPython-based desktop user interface for configuring, monitoring, and managing the Model 2450 device.
+
+This application provides tools for device communication, calibration, firmware update, data handling, and reporting.
 
 <!-- /TOC -->
 
@@ -14,15 +17,33 @@ This application is a simple interface for MCCI Model2450. its support manual te
 Development environment
 
 * OS - Windows 11 64 bit
-* Python - 3.7.6
+* Python - >= 3.10
 * wxPython - 4.2.1
+* xlsxwriter - 3.2
 * pyserial - 3.4
 
-Download [python3.7.6](https://www.python.org/downloads/release/python-376/) and install.
+Download [python3.10](https://www.python.org/ftp/python/3.10.11/python-3.10.11-amd64.exe) and install.
 
 ```shell
 pip install wxpython
 pip install pyserial
+pip install xlsxwriter
+```
+
+### Linux OS
+
+```shell
+pip3 install wxpython
+pip3 install pyserial
+pip3 install xlsxwriter
+```
+
+### Mac OS
+
+```shell
+pip3 install wxpython
+pip3 install pyserial
+pip3 install xlsxwriter
 ```
 
 ## Model2450 API Library
@@ -32,8 +53,23 @@ pip install pyserial
 * download the model2450 from here [model2450lib](https://github.com/mcci-usb/model2450lib)
 * To install the library using below command and [install package](https://github.com/mcci-usb/model2450lib#installing-model24500-package) in `Windows OS`.
 
+
 ```shell
-python setup.py install
+pip install . 
+```
+
+* download the model2450 from here [model2450lib](https://github.com/mcci-usb/model2450lib)
+* To install the library using below command and [install package](https://github.com/mcci-usb/model2450lib#installing-model24500-package) in `Linux Os`.
+
+```shell
+sudo pip3 install . 
+```
+
+* download the model2450 from here [model2450lib](https://github.com/mcci-usb/model2450lib)
+* To install the library using below command and [install package](https://github.com/mcci-usb/model2450lib#installing-model24500-package) in `Mac Os`.
+
+```shell
+pip3 install . 
 ```
 
 Please navigate to dist/ directory and you will find the files .egg file. Example: model2450lib-1.0.0-py3.7.egg
@@ -52,6 +88,17 @@ For Windows:
 
 ```shell
 python main.py
+```
+
+For linux OS:
+
+```shell
+python3 main.py
+```
+For Mac OS:
+
+```shell
+python3 main.py
 ```
 
 ## Version change process
@@ -79,12 +126,19 @@ the Model 2450 allows you to test the Brightness and color of video displays on 
 
 ## Release History
 
+- v2.2.0 Release Model 2450 UI
+
+    - [#13 controlwindows alighnment](https://github.com/mcci-usb/model2450-ui/commit/856c256e0e232b7bc26b41a72a9a15ab6d0225b9)
+
+    - [#12 wrong hex file deduction](https://github.com/mcci-usb/model2450-ui/commit/a6b3fa962fdfc5d85c3062aa74248b673f8a7af9)
+
+    - [#8 update Headers](https://github.com/mcci-usb/model2450-ui/commit/1ff49d0f5856ca6bd4be3e3080a4b3f179468e30)
+
 - v2.0.0 Release Model 2450 UI
 
     -  [#4 adding plotting for stream ](https://github.com/mcci-usb/model2450-ui/commit/d837fcad54a1a84dd0a923c8f14cc0e69c29011c)
     -  [#6 Model2450 search](https://github.com/mcci-usb/model2450-ui/commit/e47b86699ee8f850378dfbb29ad00de6c4a3fdc9)
     - [#7 Add Timestampe](https://github.com/mcci-usb/model2450-ui/commit/cb856f3cb22b2ad906e27d251c203b86fca10121)
-
 
 - v1.0.0 initial release of Model 2450 UI.
 
