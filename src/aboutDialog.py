@@ -16,6 +16,8 @@
 ##############################################################################
 # Third-party imports
 import wx
+# Built-in imports
+import os
 
 # Local application imports
 from uiGlobal import *
