@@ -168,7 +168,7 @@ class Blockframe(wx.Frame):
         """
         self.SetTitle("Color Set Window")
         self.SetBackgroundColour("white")
-        self.SetSize((4000, 180))  # Initial size
+        self.SetSize((400, 180))  # Initial size
 
         self.SetMinSize((400, 180))  # Prevent resizing smaller than this
         self.SetMaxSize((400, 180))  # Optional: Prevent resizing larger than this
